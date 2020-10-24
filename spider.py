@@ -250,14 +250,14 @@ def calculation_medals(rows):
     # 金银铜奖数量
     if len(official_list) >= 240:
         gold_index = index(official_list, 24)
-        silver_index = index(official_list, 48+gold_index)
-        bronze_index = index(official_list, 72+silver_index)
+        silver_index = index(official_list, 48+24)
+        bronze_index = index(official_list, 72+48+24)
         medals = [gold_index, silver_index-gold_index, bronze_index-silver_index]
     else:
         official_len = len(official_list)
         gold_index = index(official_list, int(official_len*0.1))
-        silver_index = index(official_list, int(official_len*0.2+gold_index))
-        bronze_index = index(official_list, int(official_len*0.3+silver_index))
+        silver_index = index(official_list, int(official_len*0.3))
+        bronze_index = index(official_list, int(official_len*0.6))
         medals = [gold_index, silver_index-gold_index, bronze_index-silver_index]
 
     for i, official in enumerate(official_list):
