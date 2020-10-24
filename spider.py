@@ -31,7 +31,6 @@ def main():
                 'startAt': config['start_at'],
                 'duration': [config['time_duration'], 'h'],
             },
-            '_now': now,
             'series': [
                 {
                     'title': '排名',
@@ -60,7 +59,15 @@ def main():
             'type': 'general',
             'version': '0.2.1',
         }
+
+        start_time = time.mktime(time.strptime(config['start_at'], "%Y-%m-%dT%H:%M:%SZ"))
+        now_time = time.mktime(time.strptime(now, "%Y-%m-%dT%H:%M:%SZ"))
+        if start_time + config['time_duration'] * 60 * 60 > now_time:
+            data['_now'] = now
+
         problems = []
+        if len(config['problem_list']) > 0:
+            label_list = config['problem_list']
         for label in label_list:
             problem = {'alias': label}
             problems.append(problem)
