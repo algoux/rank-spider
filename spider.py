@@ -72,7 +72,7 @@ def main():
             series['count'] = medals[i]
 
         path = r'/var/www/srk_ccpc/data/ccpc2020weihai.srk.json'
-        with open('ranking.json', 'w', encoding='utf-8') as file:
+        with open(path, 'w', encoding='utf-8') as file:
             json.dump(data, file, ensure_ascii=False)
 
         print(time.strftime('%Y-%m-%d %H:%M', time.localtime()), 'success')
