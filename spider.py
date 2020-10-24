@@ -84,6 +84,10 @@ def main():
         print(time.strftime('%Y-%m-%d %H:%M', time.localtime()), 'success')
         time.sleep(60)
 
+        if start_time + config['time_duration'] * 60 * 60 > now_time:
+            print("比赛已结束，谢谢使用")
+            break
+
 
 def get_config():
     """读取 config.yml 文件"""
