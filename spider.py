@@ -71,8 +71,7 @@ def main():
         for i, series in enumerate(data['series'][0]['segments']):
             series['count'] = medals[i]
 
-        path = r'/var/www/srk_ccpc/data/ccpc2020weihai.srk.json'
-        with open(path, 'w', encoding='utf-8') as file:
+        with open(config['path_file'], 'w', encoding='utf-8') as file:
             json.dump(data, file, ensure_ascii=False)
 
         print(time.strftime('%Y-%m-%d %H:%M', time.localtime()), 'success')
@@ -209,7 +208,7 @@ def format_data(data_list, label_list):
         statuses = []
         for label in label_list:
             status = {'result': None, 'time': [0, 's'], 'tries': 0}
-            if info['problems'].get(label):
+            if info['problems'].get(label) and info['problems'][label]['count'] > 0:
                 status['result'] = 'RJ'
                 if info['problems'][label]['accept']:
                     status['result'] = 'AC'
@@ -249,17 +248,17 @@ def calculation_medals(rows):
         return index
 
     # 金银铜奖数量
-    if len(official_list) > 240:
+    if len(official_list) >= 240:
         gold_index = index(official_list, 24)
-        silver_index = index(official_list, 48+24)
-        bronze_index = index(official_list, 72+48+24)
-        medals = [gold_index, silver_index-gold_index, bronze_index-silver_index-gold_index]
+        silver_index = index(official_list, 48+gold_index)
+        bronze_index = index(official_list, 72+silver_index)
+        medals = [gold_index, silver_index-gold_index, bronze_index-silver_index]
     else:
         official_len = len(official_list)
         gold_index = index(official_list, int(official_len*0.1))
-        silver_index = index(official_list, int(official_len*0.3))
-        bronze_index = index(official_list, int(official_len*0.6))
-        medals = [gold_index, silver_index-gold_index, bronze_index-silver_index-gold_index]
+        silver_index = index(official_list, int(official_len*0.2+gold_index))
+        bronze_index = index(official_list, int(official_len*0.3+silver_index))
+        medals = [gold_index, silver_index-gold_index, bronze_index-silver_index]
 
     for i, official in enumerate(official_list):
         if i <= gold_index:
