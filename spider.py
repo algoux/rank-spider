@@ -261,11 +261,11 @@ def calculation_medals(rows):
         medals = [gold_index, silver_index-gold_index, bronze_index-silver_index]
 
     for i, official in enumerate(official_list):
-        if i <= gold_index:
+        if i < gold_index:
             rows[official['rows_index']]['ranks'][0]['segmentIndex'] = 0
-        elif i <= silver_index:
+        elif i < silver_index:
             rows[official['rows_index']]['ranks'][0]['segmentIndex'] = 1
-        elif i <= bronze_index:
+        elif i < bronze_index:
             rows[official['rows_index']]['ranks'][0]['segmentIndex'] = 2
 
     return medals
