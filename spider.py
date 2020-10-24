@@ -70,8 +70,10 @@ def main():
             for problem in config['problem_list']:
                 p = {
                     'alias': problem[0],
-                    'textColor': problem[1],
-                    'backgroundColor': problem[2],
+                    "style": {
+                        'textColor': problem[1],
+                        'backgroundColor': problem[2],
+                    }
                 }
                 problems.append(p)
         else:
