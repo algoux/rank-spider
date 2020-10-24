@@ -60,17 +60,24 @@ def main():
             'version': '0.2.1',
         }
 
-        start_time = time.mktime(time.strptime(config['start_at'], "%Y-%m-%dT%H:%M:%SZ"))
+        start_time = time.mktime(time.strptime(config['start_at'].split('+')[0], "%Y-%m-%dT%H:%M:%S"))
         now_time = time.mktime(time.strptime(now, "%Y-%m-%dT%H:%M:%SZ"))
-        if start_time + config['time_duration'] * 60 * 60 > now_time:
+        if start_time + config['time_duration'] * 60 * 60 > now_time+8*60*60:
             data['_now'] = now
 
         problems = []
         if len(config['problem_list']) > 0:
-            label_list = config['problem_list']
-        for label in label_list:
-            problem = {'alias': label}
-            problems.append(problem)
+            for problem in config['problem_list']:
+                p = {
+                    'alias': problem[0],
+                    'textColor': problem[1],
+                    'backgroundColor': problem[2],
+                }
+                problems.append(p)
+        else:
+            for label in label_list:
+                problem = {'alias': label}
+                problems.append(problem)
         data['problems'] = problems
 
         rows, medals = format_data(info_list, label_list)
