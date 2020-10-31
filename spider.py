@@ -1,6 +1,7 @@
 import yaml
 import json
 import time
+import shutil
 import requests
 
 
@@ -33,7 +34,7 @@ def main():
             },
             'series': [
                 {
-                    'title': '排名',
+                    'title': '#',
                     'segments': [
                         {
                             'title': 'Gold Medalist',
@@ -52,8 +53,8 @@ def main():
                         }
                     ]
                 },
-                {'title': '总排名'},
-                {'title': '学校排名'},
+                {'title': 'R#'},
+                {'title': 'S#'},
             ],
             'markers': [{'id': 'female', 'label': '女队', 'style': 'pink'}],
             'type': 'general',
@@ -87,13 +88,14 @@ def main():
         for i, series in enumerate(data['series'][0]['segments']):
             series['count'] = medals[i]
 
-        with open(config['path_file'], 'w', encoding='utf-8') as file:
+        with open('temp.json', 'w', encoding='utf-8') as file:
             json.dump(data, file, ensure_ascii=False)
+        shutil.copy('temp.json', config['path_file'])
 
         print(time.strftime('%Y-%m-%d %H:%M', time.localtime()), 'success')
         time.sleep(60)
 
-        if start_time + config['time_duration'] * 60 * 60 > now_time:
+        if start_time + config['time_duration'] * 60 * 60 > now_time+8*60*60:
             print("比赛已结束，谢谢使用")
             break
 

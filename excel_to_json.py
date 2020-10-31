@@ -17,14 +17,15 @@ def main():
                 'marker': False,
             }
             print(row)
-            if row[-1] != '打星':
+            if row[-1] != '打星参赛':
                 info['official'] = True
 
-            if row[-1] == '女队':
+            if row[-2] == '女队':
                 info['marker'] = True
 
             user_info[row[0]] = info
 
+    print(user_info)
     with open('CCPC2020.json', 'w', encoding='utf-8') as file:
         json.dump(user_info, file, ensure_ascii=False)
 
