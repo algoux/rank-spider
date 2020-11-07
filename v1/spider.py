@@ -96,7 +96,7 @@ def main():
         time.sleep(60)
 
         if start_time + config['time_duration'] * 60 * 60 > now_time+8*60*60:
-            print("比赛已结束，谢谢使用")
+            print("比赛已结束，谢谢使用", time.localtime(start_time + config['time_duration'] * 60 * 60), time.localtime('%Y-%m-%dT%H:%M:%SZ', now_time+8*60*60))
             break
 
 
@@ -127,10 +127,10 @@ def crawl_rankings(set_id, headers, limit, infos):
             result = requests.get(url, headers=headers, timeout=5)
         except Exception as e:
             print(e)
-            return info_list, []
+            return info_list, [], None
 
         if result.status_code != 200:
-            return info_list, []
+            return info_list, [], None
 
         t = time.mktime(time.strptime(result.headers['Date'], "%a, %d %b %Y %H:%M:%S %Z"))
         now_time = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.localtime(t))

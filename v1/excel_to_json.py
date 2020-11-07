@@ -10,14 +10,13 @@ def main():
         for row in rows:
             info = {
                 'id': row[0],
-                'organization': row[1],
-                'name': row[2],
+                'name': row[1],
+                'organization': row[2],
                 'teamMembers': [{'name': row[3]+"(教练)"}, {'name': row[4]}, {'name': row[5]}, {'name': row[6]}],
                 'official': False,
                 'marker': False,
             }
-            print(row)
-            if row[-1] != '打星参赛':
+            if row[-1] != '正式队伍':
                 info['official'] = True
 
             if row[-2] == '女队':

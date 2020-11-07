@@ -1,0 +1,14 @@
+.DS_Store
+*/config.yml
+
+!v1/CCPC2020.json
+v1/CCPC2020.csv
+v1/*.json
+
+v2/CCPC2020.csv
+v2/*.json
+v2/runtime
+
+v3/*.db
+v3/*.csv
+v3/*.json

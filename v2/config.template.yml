@@ -1,0 +1,38 @@
+# 比赛展示相关配置
+contest:
+  # 比赛名称
+  title: "2020 China Collegiate Programming Contest Mianyang Site"
+  # 时间格式：2020-10-24T15:00:00+08:00
+  start_at: "2020-11-01T09:00:00+08:00"
+  # 比赛时长 单位：小时
+  duration: 5
+  # 有序题目列表，标签，别名，字体颜色，背景颜色（对应气球颜色）
+  problems:
+    - ["7-1", "A", "#ffffff", "#bd0e0e"]
+    - ["7-2", "B", "#ffffff", "#ff90e4"]
+    - ["7-3", "C", "#000000", "#ffffff"]
+    - ["7-4", "D", "#ffffff", "#26b93c"]
+    - ["7-5", "E", "#000000", "#efd909"]
+    - ["7-6", "F", "#ffffff", "#f35814"]
+    - ["7-7", "G", "#ffffff", "#0c4c8a"]
+    - ["7-8", "H", "#ffffff", "#9c9b9b"]
+    - ["7-9", "I", "#ffffff", "#049a73"]
+    - ["7-10", "J", "#ffffff", "#9f13ec"]
+    - ["7-11", "K", "#ffffff", "#2ac5ca"]
+    - ["7-12", "L", "#ffffff", "#8e3836"]
+
+# 爬虫相关配置
+spider:
+  # 比赛 Id
+  contest_id: "1322537933606182912"
+  # 每次爬取的数目
+  limit: 10
+  # 爬取间隔，不要设置太大和滚动展示的时效性相关 单位秒
+  duration: 10
+  # 能够看到榜单用户的 cookie
+  cookie: ""
+
+# json 文件存放路径
+information_path: "CCPC2020.json"
+ranking_path: "ranking.json"
+scroll_path: "scroll_1.json"

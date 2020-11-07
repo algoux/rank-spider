@@ -1,0 +1,30 @@
+# 比赛相关配置
+# 比赛名称
+title: "2020 China Collegiate Programming Contest Weihai Site(Warm Up)"
+# 比赛开始时间 2020-10-24 15:00:00
+start_at: "2020-10-31T15:00:00+08:00"
+# 比赛时长 默认单位：小时
+time_duration: 3
+# 题目列表，题目序号，字体颜色，背景颜色（对应气球颜色）
+problem_list:
+  - ["A", "#ffffff", "#bd0e0e"]
+  - ["B", "#ffffff", "#ff90e4"]
+  - ["C", "#000000", "#ffffff"]
+  - ["D", "#ffffff", "#26b93c"]
+#  - ["E", "#000000", "#efd909"]
+#  - ["F", "#ffffff", "#f35814"]
+#  - ["G", "#ffffff", "#0c4c8a"]
+#  - ["H", "#ffffff", "#9c9b9b"]
+#  - ["I", "#ffffff", "#049a73"]
+#  - ["J", "#ffffff", "#9f13ec"]
+#  - ["K", "#ffffff", "#2ac5ca"]
+#  - ["L", "#ffffff", "#8e3836"]
+
+# 爬虫相关配置
+# 题目集的 Id 可以从导航栏中获得
+problem_set_id: "1322401187006472192"
+# 限制榜单每次爬取的数量
+limit: 50
+cookie: "_ga=GA1.2.407094141.1603437247; __snaker__captcha=3FKDcD4Rhqt8qMnQ; _9755xjdesxxd_=32; __gads=ID=268cd768c6f068e0-2271c9fb5dc400e5:T=1603437296:RT=1603437296:S=ALNI_MaRuC4F1PHVMCCf28bdzHLFG7YCaA; gdxidpyhxdE=81kXRxWedyd12oXU2u66QNHwiQ5%2FUzYkx66%2B9v%5CNOqbViSjAZTs8V9vngLJp2e36Ggx0lQm5muMJra0CqLK9o3jr3SUmIxX6u%2BHQ2zJgS%2B7mR1StQMOsSTaHGPy3l2tXhsWvYK%5C236yGh8yUcqJ9lGIX0V%2BSQWlm%2F1aEK0Of7iPE%2BIx4%3A1603524116826; PTASession=8af6fffb-0004-467a-8477-6ec7ee2e8117; _gid=GA1.2.1075421958.1604068363; JSESSIONID=75B8D4DB80B0DD67B9D3A36228F99236; _gat=1"
+#path_file: "/var/www/srk_ccpc/data/ccpc2020mianyang.srk.json"
+path_file: "ranking.json"
