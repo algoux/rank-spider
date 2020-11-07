@@ -42,7 +42,7 @@ def main():
     while True:
         submissions, timestamp = spider.crawl(submit_id)
         scroll_data, sid = calculation.scroll(submissions)
-        if sid != '1':
+        if sid is not None:
             submit_id = sid
 
         dump_info(config['scroll_path'], scroll_data)
@@ -53,7 +53,8 @@ def main():
             print("比赛已结束，感谢使用")
             break
 
-        print(time.strftime('%Y-%m-%d %H:%M', time.localtime()), '爬取成功', submit_id)
+        format_time = time.strftime('%Y-%m-%d %H:%M', time.localtime())
+        print('{} 成功爬取 {} 条记录，submit_id={}'.format(format_time, len(submissions), submit_id))
         time.sleep(config['spider']['duration'])
 
 
@@ -222,7 +223,7 @@ class Calculation:
 
     def scroll(self, submissions: list):
         records, rows = [], []
-        submit_id = '1'  # 初始化 submit_id 值无用
+        submit_id = None  # 初始化 submit_id 值无用
         for submit in submissions:
             submit_id = submit['id']
             team_id = submit['user']['studentUser']['studentNumber']
