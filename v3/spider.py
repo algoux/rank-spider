@@ -235,7 +235,7 @@ class Calculation:
             record = [submit_id, team_id, problem, result, timestamp]
             records.append(record)
 
-            if result not in ['CE', 'UKE', 'unknow']:
+            if result in ['CE', 'UKE', 'unknow']:
                 continue
 
             row = {
@@ -252,9 +252,11 @@ class Calculation:
             }
 
             if not self.user[team_id]['accept'].get(problem) and result not in ['CE', 'UKE', 'unknow']:
-                s = self.problem_status.setdefault(problem, set())
+                t = self.problem_status.setdefault(team_id, {})
+                s = t.setdefault(problem, set())
                 s.add(submit_id)
-                self.problem_status[problem] = s
+                t[problem] = s
+                self.problem_status[team_id] = t
 
             if result == 'AC':
                 self.user[team_id]['accept'][problem] = timestamp
