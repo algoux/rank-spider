@@ -50,7 +50,7 @@ def main():
             print("比赛已结束，感谢使用")
             break
 
-        print(time.strftime('%Y-%m-%d %H:%M', time.localtime()), '爬取成功')
+        print(time.strftime('%Y-%m-%d %H:%M', time.localtime()), '爬取成功', submit_id)
         time.sleep(config['spider']['duration'])
 
 
@@ -227,7 +227,7 @@ class Calculation:
             result = status.setdefault(submit['status'], 'unknow')
             if result == 'unknow':
                 print('出现不明提交结果', submit['status'], submit_id, team_id, submit['problemSetProblem']['label'])
-                continue
+                break
 
             t = int(time.mktime(time.strptime(submit['submitAt'], "%Y-%m-%dT%H:%M:%SZ"))) + 8*60*60
             timestamp = t - self.start_timestamp

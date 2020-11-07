@@ -9,6 +9,7 @@ v2/CCPC2020.csv
 v2/*.json
 v2/runtime
 
+!CCPC2020-changchun.csv
 v3/*.db
 v3/*.csv
 v3/*.json
