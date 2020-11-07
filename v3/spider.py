@@ -41,7 +41,10 @@ def main():
     submit_id = config['spider']['submit_id']
     while True:
         submissions, timestamp = spider.crawl(submit_id)
-        scroll_data, submit_id = calculation.scroll(submissions)
+        scroll_data, sid = calculation.scroll(submissions)
+        if sid != '1':
+            submit_id = sid
+
         dump_info(config['scroll_path'], scroll_data)
         timestamp = int(time.time())
         rank_data = calculation.ranking(timestamp)
