@@ -229,8 +229,11 @@ class Calculation:
             team_id = submit['user']['studentUser']['studentNumber']
             problem = self.problem_dict[submit['problemSetProblem']['label']]
             result = status.setdefault(submit['status'], 'unknow')
+            # 不明提交，中断后续数据的获取
             if result == 'unknow':
-                print('出现不明提交结果', submit['status'], submit_id, team_id, submit['problemSetProblem']['label'])
+                print('出现不明提交结果：{} submit_id={} team_id={} problem_label={}'.format(submit['status'], submit_id, team_id, submit['problemSetProblem']['label']))
+                # 将本次的不明提交记录到下次提交内，如果不减一，本次不明提交会被忽略
+                submit_id = str(int(submit_id)-1)
                 break
 
             t = int(time.mktime(time.strptime(submit['submitAt'], "%Y-%m-%dT%H:%M:%SZ"))) + 8*60*60
@@ -239,7 +242,7 @@ class Calculation:
             record = [submit_id, team_id, problem, result, timestamp]
             records.append(record)
 
-            if result in ['CE', 'UKE', 'unknow']:
+            if result in ['CE', 'UKE']:
                 continue
 
             row = {
@@ -255,7 +258,7 @@ class Calculation:
                 },
             }
 
-            if not self.user[team_id]['accept'].get(problem) and result not in ['CE', 'UKE', 'unknow']:
+            if not self.user[team_id]['accept'].get(problem) and result not in ['CE', 'UKE']:
                 t = self.problem_status.setdefault(team_id, {})
                 s = t.setdefault(problem, set())
                 s.add(submit_id)
@@ -369,6 +372,7 @@ class Calculation:
                         stat['result'] = 'FB'
                 stat['time'][0] = problem_time
                 stat['tries'] = len(problem_tries)
+
                 solutions = self.solutions(user['id'], problem[1], problem_tries)
                 stat['solutions'] = solutions
                 statuses.append(stat)
