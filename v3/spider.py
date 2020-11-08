@@ -267,7 +267,7 @@ class Calculation:
 
             if result == 'AC':
                 self.user[team_id]['accept'][problem] = timestamp
-                # row['result'] = 'AC'  # 外榜展示状态，这里可以删除
+                row['score']['value'] += 1
                 if not self.first_blood.get(problem) and self.user[team_id]['official']:
                     self.first_blood[problem] = team_id
                     row['result'] = 'FB'
