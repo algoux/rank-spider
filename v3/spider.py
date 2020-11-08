@@ -46,7 +46,6 @@ def main():
             submit_id = sid
 
         dump_info(config['scroll_path'], scroll_data)
-        timestamp = int(time.time())
         rank_data = calculation.ranking(timestamp)
         dump_info(config['ranking_path'], rank_data)
         if calculation.start_timestamp + config['contest']['duration'] * 60 * 60 < timestamp:
@@ -237,12 +236,12 @@ class Calculation:
                 break
 
             t = int(time.mktime(time.strptime(submit['submitAt'], "%Y-%m-%dT%H:%M:%SZ"))) + 8*60*60
-            timestamp = t - self.start_timestamp
+            duration = t - self.start_timestamp
 
-            record = [submit_id, team_id, problem, result, timestamp]
+            record = [submit_id, team_id, problem, result, duration]
             records.append(record)
 
-            if result in ['CE', 'UKE'] or t > 5*60:
+            if result in ['CE', 'UKE'] or time.time()-t > 5*60:
                 continue
 
             row = {
@@ -266,7 +265,7 @@ class Calculation:
                 self.problem_status[team_id] = t
 
             if result == 'AC':
-                self.user[team_id]['accept'][problem] = timestamp
+                self.user[team_id]['accept'][problem] = duration
                 row['score']['value'] += 1
                 if not self.first_blood.get(problem) and self.user[team_id]['official']:
                     self.first_blood[problem] = team_id
