@@ -242,7 +242,7 @@ class Calculation:
             record = [submit_id, team_id, problem, result, timestamp]
             records.append(record)
 
-            if result in ['CE', 'UKE']:
+            if result in ['CE', 'UKE'] or t > 5*60:
                 continue
 
             row = {
