@@ -239,14 +239,14 @@ class Calculation:
             t = int(time.mktime(time.strptime(submit['submitAt'], "%Y-%m-%dT%H:%M:%SZ"))) + 8*60*60
             duration = t - self.start_timestamp
 
+            if t > self.frozen_timestamp and result not in ['CE', 'UKE']:
+                result = '?'
+
             record = [submit_id, team_id, problem, result, duration]
             records.append(record)
 
             if result in ['CE', 'UKE']:
                 continue
-
-            if t > self.frozen_timestamp:
-                result = '?'
 
             row = {
                 'problem': {'alias': problem},
@@ -280,7 +280,7 @@ class Calculation:
 
         # 将数据更新到数据库，无则添加，有则更新
         self.db.insert('submit', records)
-        # 返回混动的信息流，和当前提交 Id
+        # 返回滚动的信息流，和当前提交 Id
         data = {
             'updatedAt': int(time.time()),
             'rows': rows,
@@ -414,7 +414,7 @@ class Calculation:
                 'title': self.title,
                 'startAt': time.strftime('%Y-%m-%dT%H:%M:%S+08:00', time.localtime(self.start_timestamp)),
                 'duration': [self.duration, 'h'],
-                'frozen_duration': [self.frozen_timestamp-self.start_timestamp, 's']
+                'frozenDuration': [self.duration - (self.frozen_timestamp - self.start_timestamp)/3600,  'h']
             },
             'series': [
                 {
