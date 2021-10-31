@@ -377,8 +377,10 @@ class Calculation:
                 stat['time'][0] = problem_time
                 stat['tries'] = len(problem_tries)
 
-                solutions = self.solutions(user['id'], problem[1], problem_tries)
+                solutions, is_frozen = self.solutions(user['id'], problem[1], problem_tries)
                 stat['solutions'] = solutions
+                if is_frozen:
+                    stat['result'] = '?'
                 statuses.append(stat)
 
             row['statuses'] = statuses
@@ -392,6 +394,7 @@ class Calculation:
 
     def solutions(self, team_id: str, problem: str, problem_tries: set):
         solutions = []
+        is_frozen = False
         rows = self.db.select('submit', team_id=team_id, problem=problem)
         for row in rows:
             if row[0] not in problem_tries:
@@ -403,9 +406,11 @@ class Calculation:
             if row[3] == "AC" and self.first_blood[problem] == team_id:
                 solution['result'] = 'FB'
             solutions.append(solution)
+            if row[3] == '?':
+                is_frozen = True
         solutions.sort(key=lambda x: x['time'][0])
 
-        return solutions
+        return solutions, is_frozen
 
     def ranking(self, timestamp: int):
         now_time = time.strftime('%Y-%m-%dT%H:%M:%S+08:00', time.localtime(timestamp))
