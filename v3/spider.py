@@ -175,6 +175,7 @@ class Calculation:
         self.title = contest['title']
         timestamp = int(time.mktime(time.strptime(contest['start_at'].split('+')[0], "%Y-%m-%dT%H:%M:%S")))
         self.start_timestamp = timestamp
+        self.seal_ranking_timestamp = int(time.mktime(time.strptime(contest['seal_ranking_at'].split('+')[0], "%Y-%m-%dT%H:%M:%S")))
         self.duration = contest['duration']
         self.problems = contest['problems']
         self.problem_dict = {}
@@ -241,8 +242,11 @@ class Calculation:
             record = [submit_id, team_id, problem, result, duration]
             records.append(record)
 
-            if result in ['CE', 'UKE'] or time.time()-t > 5*60:
+            if result in ['CE', 'UKE']:
                 continue
+
+            if t > self.seal_ranking_timestamp:
+                result = '?'
 
             row = {
                 'problem': {'alias': problem},
@@ -257,21 +261,22 @@ class Calculation:
                 },
             }
 
-            if not self.user[team_id]['accept'].get(problem) and result not in ['CE', 'UKE']:
+            if not self.user[team_id]['accept'].get(problem):
                 t = self.problem_status.setdefault(team_id, {})
                 s = t.setdefault(problem, set())
                 s.add(submit_id)
                 t[problem] = s
                 self.problem_status[team_id] = t
 
-            if result == 'AC':
-                self.user[team_id]['accept'][problem] = duration
-                row['score']['value'] += 1
-                if not self.first_blood.get(problem) and self.user[team_id]['official']:
-                    self.first_blood[problem] = team_id
-                    row['result'] = 'FB'
+                if result == 'AC':
+                    self.user[team_id]['accept'][problem] = duration
+                    row['score']['value'] += 1
+                    if not self.first_blood.get(problem) and self.user[team_id]['official']:
+                        self.first_blood[problem] = team_id
+                        row['result'] = 'FB'
 
-            rows.append(row)
+            if time.time() - duration < 5*60:
+                rows.append(row)
 
         # 将数据更新到数据库，无则添加，有则更新
         self.db.insert('submit', records)
