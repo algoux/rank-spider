@@ -175,7 +175,7 @@ class Calculation:
         self.title = contest['title']
         timestamp = int(time.mktime(time.strptime(contest['start_at'].split('+')[0], "%Y-%m-%dT%H:%M:%S")))
         self.start_timestamp = timestamp
-        self.seal_ranking_timestamp = int(time.mktime(time.strptime(contest['seal_ranking_at'].split('+')[0], "%Y-%m-%dT%H:%M:%S")))
+        self.frozen_timestamp = int(time.mktime(time.strptime(contest['frozen_at'].split('+')[0], "%Y-%m-%dT%H:%M:%S")))
         self.duration = contest['duration']
         self.problems = contest['problems']
         self.problem_dict = {}
@@ -245,7 +245,7 @@ class Calculation:
             if result in ['CE', 'UKE']:
                 continue
 
-            if t > self.seal_ranking_timestamp:
+            if t > self.frozen_timestamp:
                 result = '?'
 
             row = {
@@ -414,6 +414,7 @@ class Calculation:
                 'title': self.title,
                 'startAt': time.strftime('%Y-%m-%dT%H:%M:%S+08:00', time.localtime(self.start_timestamp)),
                 'duration': [self.duration, 'h'],
+                'frozen_duration': [self.frozen_timestamp-self.start_timestamp, 's']
             },
             'series': [
                 {
