@@ -419,7 +419,7 @@ class Calculation:
                 'title': self.title,
                 'startAt': time.strftime('%Y-%m-%dT%H:%M:%S+08:00', time.localtime(self.start_timestamp)),
                 'duration': [self.duration, 'h'],
-                'frozenDuration': [self.duration - (self.frozen_timestamp - self.start_timestamp)/3600,  'h']
+                'frozenDuration': [self.duration*60*60 - (self.frozen_timestamp - self.start_timestamp),  's']
             },
             'series': [
                 {
