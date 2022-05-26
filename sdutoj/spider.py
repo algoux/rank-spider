@@ -7,6 +7,7 @@ import requests
 
 
 time_format = '%Y-%m-%dT%H:%M:%S.%fZ'
+utc_8 = 8 * 60 * 60
 
 status = {
     1: 'AC',
@@ -92,8 +93,8 @@ class Spider:
         d = self._post(path='getCompetitionDetail', json=json)
         contest_config = {
             "title": d['title'],
-            "start_at": int(time.mktime(time.strptime(d['startAt'], time_format))),
-            "end_at": int(time.mktime(time.strptime(d['endAt'], time_format)))
+            "start_at": int(time.mktime(time.strptime(d['startAt'], time_format))) + utc_8,
+            "end_at": int(time.mktime(time.strptime(d['endAt'], time_format))) + utc_8
         }
 
         # 获取封榜时间
@@ -142,7 +143,7 @@ class Spider:
                 'problem_id':  row['problem']['problemId'],
                 'solution_id': row['solutionId'],
                 'status':      row['result'],
-                'created_at':  int(time.mktime(time.strptime(row['createdAt'], time_format))),
+                'created_at':  int(time.mktime(time.strptime(row['createdAt'], time_format))) + utc_8,
             }
             results.append(res)
 
