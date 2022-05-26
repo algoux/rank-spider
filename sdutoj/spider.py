@@ -314,8 +314,7 @@ class Calculation:
         for team_id, info in self.user.items():
             total_time = 0
             for k, v in info['accept'].items():
-                total_time += (v - self.start_at) # 计算通过该题的时间
-                total_time += 20 * 60 * (len(self.problem_status[team_id][k]) - 1)
+                total_time += v + 20 * 60 * (len(self.problem_status[team_id][k]) - 1)
 
             info = [team_id, len(info['accept']), total_time]
             infos.append(info)
