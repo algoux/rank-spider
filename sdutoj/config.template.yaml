@@ -1,0 +1,17 @@
+# 比赛 Id
+contest_id: "1322537933606182912"
+# 提交记录 Id 从头
+submit_id: "1"
+# 每次爬取的数目
+limit: 30
+# 爬取间隔，不要设置太大和滚动展示的时效性相关 单位秒
+duration: 2
+# 能够看到榜单用户的 cookie
+cookie: ""
+
+# 使用 sqlite3 数据库存储
+database: "ccpc.db"
+
+# json 文件存放路径
+ranking_path: "ranking.json"
+scroll_path: "scroll.json"
