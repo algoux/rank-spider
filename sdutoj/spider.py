@@ -355,14 +355,15 @@ class Calculation:
             # 计算正式队伍排名
             if user['official']:
                 # 专业组排名
-                if user['marker'] == '专业组':
+                if user['marker'] == 'pro':
                     if info[1] == pro_index[1] and info[2] == pro_index[2]:
                         row['ranks'][1]['rank'] = pro_index[0]
                     else:
                         row['ranks'][1]['rank'] = pro_rank
                         pro_index = (pro_rank, info[1], info[2])
                     pro_rank += 1
-                elif user['marker'] == '非专业组':
+                # 非专业组
+                elif user['marker'] == 'nopro':
                     if info[1] == nopro_index[1] and info[2] == nopro_index[2]:
                         row['ranks'][2]['rank'] = nopro_index[0]
                     else:

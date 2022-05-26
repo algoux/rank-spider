@@ -107,9 +107,9 @@ def team_info(contest_id: int) -> list:
         info.append(official)
 
         # 比赛人员分为专业组和非专业组分别比拼
-        marker = '专业组'
+        marker = 'pro'
         if row['info']['group'] == 'nonpro':
-            marker = '非专业组'
+            marker = 'nopro'
         info.append(marker)
 
         infos.append(info)
