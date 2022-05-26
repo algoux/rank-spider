@@ -27,7 +27,7 @@ contest:
 spider:
   # 比赛 Id
   contest_id: "1322537933606182912"
-  # 提交记录 Id 从头
+  # 提交记录 Id 从这个 id 开始往后爬取
   submit_id: "1"
   # 每次爬取的数目
   limit: 30

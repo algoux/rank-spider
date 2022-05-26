@@ -1,7 +1,7 @@
 # 比赛 Id
-contest_id: "1322537933606182912"
-# 提交记录 Id 从头
-submit_id: "1"
+contest_id: 1322537933606182912
+# 提交记录 Id 从这个 id 开始往后爬取
+submit_id: 1
 # 每次爬取的数目
 limit: 30
 # 爬取间隔，不要设置太大和滚动展示的时效性相关 单位秒
@@ -10,7 +10,7 @@ duration: 2
 cookie: ""
 
 # 使用 sqlite3 数据库存储
-database: "ccpc.db"
+database: "sdutoj.db"
 
 # json 文件存放路径
 ranking_path: "ranking.json"

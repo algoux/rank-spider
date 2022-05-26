@@ -35,7 +35,6 @@ def main():
 
     spider = Spider(headers=headers, contest_id=config['contest_id'], limit=config['limit'])
     contest_config = spider.get_contest_config()
-    print(contest_config)
     
     db = Database(config.setdefault('database', 'sdutoj.db'))
     calculation = Calculation(contest_config, db)
@@ -329,14 +328,13 @@ class Calculation:
         nopro_index = (0, 1000, 0)  # 元组：排名, AC 题目数，做题总时间
         for info in infos:
             user = self.user[info[0]]
-            slogan = user['slogan']
 
             row = {
                 'user': {
                     'id': user['id'],
                     'name': user['name'],
                     'organization': user['organization'],
-                    'teamMembers': slogan,
+                    'teamMembers': [{'name': user['slogan']}],
                     'official': user['official'],
                 },
                 'ranks': [
@@ -366,9 +364,9 @@ class Calculation:
                     pro_rank += 1
                 elif user['marker'] == '非专业组':
                     if info[1] == nopro_index[1] and info[2] == nopro_index[2]:
-                        row['ranks'][1]['rank'] = nopro_index[0]
+                        row['ranks'][2]['rank'] = nopro_index[0]
                     else:
-                        row['ranks'][1]['rank'] = nopro_rank
+                        row['ranks'][2]['rank'] = nopro_rank
                         nopro_index = (nopro_rank, info[1], info[2])
                     nopro_rank += 1
 
@@ -456,7 +454,10 @@ class Calculation:
                     ]
                 },
             ],
-            'markers': [{'id': 'pro', 'label': '专业组'}, {'id': 'nopro', 'label': '非专业组'}],
+            'markers': [
+                {'id': 'pro', 'label': '专业组', 'style': {'backgroundColor': 'rgba(0, 0, 0, 0)'}}, 
+                {'id': 'nopro', 'label': '非专业组', 'style': {'backgroundColor': 'rgba(0, 0, 0, 0)'}}
+            ],
             'type': 'general',
             'version': '0.2.1',
         }
