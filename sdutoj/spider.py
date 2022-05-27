@@ -255,8 +255,8 @@ class Calculation:
                 submit_id -= 1
                 break
 
-            duration = self.end_at - submit['created_at']
-            if duration <= self.frozen and result not in ['CE', 'UKE']:
+            duration = submit['created_at'] - self.start_at
+            if self.end_at - submit['created_at'] <= self.frozen and result not in ['CE', 'UKE']:
                 result = '?'
 
             record = [submit_id, team_id, submit['problem_id'], result, duration]
