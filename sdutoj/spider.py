@@ -48,7 +48,8 @@ def main():
         if sid is not None:
             solution_id = sid
         elif solution_id != config['submit_id']:
-            print('数据拉取失败，等待下次拉取中。。。')
+            print('数据拉取失败，10 秒后拉取。。。')
+            time.sleep(10)
             continue
 
         dump_info(config['scroll_path'], scroll_data)
