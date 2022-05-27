@@ -1,4 +1,4 @@
-from operator import le
+import math
 import yaml
 import json
 import time
@@ -520,58 +520,67 @@ class Calculation:
                 else:
                     nopro_list.append(info)
               
-        if len(pro_list) <= 10 and len(nopro_list) <= 0:
-            return [[0, 0, 0], [0, 0, 0]]
-
-        def index(infos, index):
-            while True:
-                last_score = infos[index - 1]['score']
-                score = rows[index]['score']
-                if last_score['value'] != score['value'] or last_score['time'][0] != score['time'][0]:
-                    break
-                index += 1
-            return index
+        # if len(pro_list) <= 10 and len(nopro_list) <= 0:
+            # return [[0, 0, 0], [0, 0, 0]]
 
         medals = []
         # 专业组金银铜奖数量
         pro_len = len(pro_list)
-        gold_index = index(pro_list, int(pro_len * 0.1))
-        silver_index = index(pro_list, int(pro_len * 0.3))
-        bronze_index = index(pro_list, int(pro_len * 0.6))
-        medal = [gold_index, silver_index - gold_index, bronze_index - silver_index]
-        medals.append(medal)
+        gold_i = self._get_index(pro_list, math.ceil(pro_len * 0.1))
+        silver_i = self._get_index(pro_list, math.ceil(pro_len * 0.3))
+        bronze_i = self._get_index(pro_list, math.ceil(pro_len * 0.6))
+        medals.append([gold_i, silver_i - gold_i, bronze_i - silver_i])
 
         for i, pro in enumerate(pro_list):
-            if i < gold_index:
+            if i < gold_i:
                 rows[pro['rows_index']]['ranks'][1]['segmentIndex'] = 0
-            elif i < silver_index:
+            elif i < silver_i:
                 rows[pro['rows_index']]['ranks'][1]['segmentIndex'] = 1
-            elif i < bronze_index:
+            elif i < bronze_i:
                 rows[pro['rows_index']]['ranks'][1]['segmentIndex'] = 2
 
         # 非专业组
         nopro_len = len(nopro_list)
-        gold_index = index(nopro_list, int(nopro_len * 0.1))
-        silver_index = index(nopro_list, int(nopro_len * 0.3))
-        bronze_index = index(nopro_list, int(nopro_len * 0.6))
-        # TODO: 需要添加额外条件，非专业同奖项做题数最多比专业组少 1 题
-        medal = [gold_index, silver_index - gold_index, bronze_index - silver_index]
-        medals.append(medal)
+        gold_i = self._get_index(nopro_list, math.ceil(nopro_len * 0.1))
+        silver_i = self._get_index(nopro_list, math.ceil(nopro_len * 0.3))
+        bronze_i = self._get_index(nopro_list, math.ceil(nopro_len * 0.6))
+        # 非专业组有额外限制
+        gold_i = self._nopro_medals(nopro_list, gold_i, pro_list[medals[0][0]]['score']['value'])
+        silver_i = self._nopro_medals(nopro_list, silver_i, pro_list[medals[0][1]]['score']['value'])
+        bronze_i = self._nopro_medals(nopro_list, bronze_i, pro_list[medals[0][2]]['score']['value'])
+        medals.append([gold_i, silver_i - gold_i, bronze_i - silver_i])
 
         for i, nopro in enumerate(nopro_list):
-            if i < gold_index:
+            if i < gold_i:
                 rows[nopro['rows_index']]['ranks'][2]['segmentIndex'] = 0
-            elif i < silver_index:
+            elif i < silver_i:
                 rows[nopro['rows_index']]['ranks'][2]['segmentIndex'] = 1
-            elif i < bronze_index:
+            elif i < bronze_i:
                 rows[nopro['rows_index']]['ranks'][2]['segmentIndex'] = 2
-
-
 
         return medals
 
-    def _nopro_medals():
-        pass
+    def _get_index(self, infos: list, index: int) -> int:
+        while index > 0:
+            last_score = infos[index - 1]['score']
+            score = infos[index]['score']
+            if last_score['value'] != score['value'] or last_score['time'][0] != score['time'][0]:
+                break
+            index += 1
+        return index
+
+    def _nopro_medals(self, nopro_list: list, index: int, pro_solve_num: int) -> int:
+        """
+        Param: nopro_list 非专业数组
+        Param: index 非专业获奖最后一人的下标
+        Param: pro_solve_num 专业获奖解出的题目数
+        Return: 校正后后的非专业组获奖下标
+        Description: 非专业组的同类奖项需要满足在 10 20 30 的范围且同类型奖项解出题目数最多只能比专业组少一题
+        """
+        while index > 0:
+            if nopro_list[index-1]['score']['value'] < pro_solve_num - 1:
+                index -= 1
+        return index
 
 
 if __name__ == '__main__':
