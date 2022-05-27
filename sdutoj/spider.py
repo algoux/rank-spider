@@ -184,21 +184,10 @@ class Database:
             print('数据库查询出错：', e)
             return []
 
-        # 直接返回 rows 会因为 cursor close 导致无法读出数据
-        records = []
-        for row in rows:
-            records.append(row)
-
         self.connect.commit()
+        records = rows.fetchall()
         cursor.close()
         return records
-
-    def execute(self, sql: str):
-        cursor = self.connect.cursor()
-        rows = cursor.execute(sql)
-        self.connect.commit()
-        cursor.close()
-        return rows
 
 
 class Calculation:
@@ -253,8 +242,8 @@ class Calculation:
         for submit in submissions:
             submit_id = submit['solution_id']
             team_id = submit['user_id']
-            problem = self.problem_dict.get(submit['problem_id'])
-            if problem is None:
+            problem_alias = self.problem_dict.get(submit['problem_id'])
+            if problem_alias is None:
                 print(f'获取到未知题目的提交，请检查是否更换了题目，未知提交记录: {submit}')
                 continue
 
@@ -270,14 +259,14 @@ class Calculation:
             if duration <= self.frozen and result not in ['CE', 'UKE']:
                 result = '?'
 
-            record = [submit_id, team_id, problem, result, duration]
+            record = [submit_id, team_id, submit['problem_id'], result, duration]
             records.append(record)
 
             if result in ['CE', 'UKE']:
                 continue
 
             row = {
-                'problem': {'alias': problem},
+                'problem': {'alias': problem_alias},
                 'score': {
                     'value': len(self.user[team_id]['accept'])
                 },
@@ -289,18 +278,18 @@ class Calculation:
                 },
             }
 
-            if not self.user[team_id]['accept'].get(problem):
+            if not self.user[team_id]['accept'].get(submit['problem_id']):
                 t = self.problem_status.setdefault(team_id, {})
-                s = t.setdefault(problem, set())
+                s = t.setdefault(problem_alias, set())
                 s.add(submit_id)
-                t[problem] = s
+                t[problem_alias] = s
                 self.problem_status[team_id] = t
 
                 if result == 'AC':
-                    self.user[team_id]['accept'][problem] = duration
+                    self.user[team_id]['accept'][submit['problem_id']] = duration
                     row['score']['value'] += 1
-                    if not self.first_blood.get(problem) and self.user[team_id]['official']:
-                        self.first_blood[problem] = team_id
+                    if not self.first_blood.get(submit['problem_id']) and self.user[team_id]['official']:
+                        self.first_blood[submit['problem_id']] = team_id
                         row['result'] = 'FB'
 
             # 如果提交是五分钟前的提交，则不进行滚动展示
@@ -387,14 +376,14 @@ class Calculation:
                 problem_time = 0
                 if not self.problem_status.get(user['id']):
                     self.problem_status[user['id']] = {}
-                problem_tries = self.problem_status[user['id']].setdefault(problem[1], set())
+                problem_tries = self.problem_status[user['id']].setdefault(problem[0], set())
                 if len(problem_tries) > 0:
                     stat['result'] = 'RJ'
 
-                if user['accept'].get(problem[1]):
-                    problem_time = user['accept'][problem[1]]
+                if user['accept'].get(problem[0]):
+                    problem_time = user['accept'][problem[0]]
                     stat['result'] = 'AC'
-                    if self.first_blood[problem[1]] == user['id']:
+                    if self.first_blood[problem[0]] == user['id']:
                         stat['result'] = 'FB'
                 stat['time'][0] = problem_time
                 stat['tries'] = len(problem_tries)
@@ -486,10 +475,10 @@ class Calculation:
             total = 0
             ac_total = 0
             for team_id, user in self.user.items():
-                if user['accept'].get(problem[1]):
+                if user['accept'].get(problem[0]):
                     ac_total += 1
                 s = self.problem_status.setdefault(team_id, {})
-                total += len(s.setdefault(problem[1], set()))
+                total += len(s.setdefault(problem[0], set()))
             p['statistics'] = {
                 'accepted': ac_total,
                 'submitted': total,
