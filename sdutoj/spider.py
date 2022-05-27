@@ -101,8 +101,8 @@ class Spider:
 
         # 获取封榜时间
         d = self._post(path='getCompetitionSettings', json=json)
-        # 比赛开始后经过多少时间进行封榜
-        contest_config['frozen'] = contest_config['end_at'] - contest_config['start_at'] - d['frozenLength']
+        # 距离比赛结束还剩多少时间进行封榜
+        contest_config['frozen'] = d['frozenLength']
 
         # 获取题目配置
         d = self._post(path='getCompetitionProblemConfig', json=json)
@@ -266,8 +266,8 @@ class Calculation:
                 submit_id -= 1
                 break
 
-            duration = submit['created_at'] - self.start_at
-            if duration > self.frozen and result not in ['CE', 'UKE']:
+            duration = self.end_at - submit['created_at']
+            if duration <= self.frozen and result not in ['CE', 'UKE']:
                 result = '?'
 
             record = [submit_id, team_id, problem, result, duration]
