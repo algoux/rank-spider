@@ -1,3 +1,4 @@
+from operator import le
 import yaml
 import json
 import time
@@ -439,7 +440,7 @@ class Calculation:
             'series': [
                 {'title': '总榜'},
                 {
-                    'title': '专业组',
+                    'title': '专业',
                     'segments': [
                         {'title': 'Gold Medalist', 'count': 0, 'style': 'gold'},
                         {'title': 'Silver Medalist', 'count': 0, 'style': 'silver'},
@@ -456,8 +457,8 @@ class Calculation:
                 },
             ],
             'markers': [
-                {'id': 'pro', 'label': '专业组', 'style': {'backgroundColor': 'rgba(0, 0, 0, 0)'}}, 
-                {'id': 'nopro', 'label': '非专业组', 'style': {'backgroundColor': 'rgba(0, 0, 0, 0)'}}
+                {'id': 'pro', 'label': '专业', 'style': {'backgroundColor': 'rgba(0, 0, 0, 0)'}}, 
+                {'id': 'nopro', 'label': '非专业', 'style': {'backgroundColor': 'rgba(0, 0, 0, 0)'}}
             ],
             'type': 'general',
             'version': '0.2.1',
@@ -494,57 +495,83 @@ class Calculation:
         rows = self.calculation()
         data['rows'] = rows
 
-        # medals = self.medals(rows)
-        # for i, series in enumerate(data['series'][0]['segments']):
-        #     series['count'] = medals[i]
+        medals = self.medals(rows)
+        pro_medal = medals[0]
+        for i, series in enumerate(data['series'][1]['segments']):
+            series['count'] = pro_medal[i]
+        nopro_medal = medals[1]
+        for i, series in enumerate(data['series'][2]['segments']):
+            series['count'] = nopro_medal[i]
 
         return data
 
     def medals(self, rows):
         """计算奖牌的数量"""
-        official_list = []
+        pro_list = []
+        nopro_list = []
         for i, row in enumerate(rows):
             if row['user']['official'] and row['score']['value'] > 0:
-                official = {
+                info = {
                     'rows_index': i,
-                    'score': row['score'],
+                    'score': row['score']
                 }
-                official_list.append(official)
-        if len(official_list) <= 10:
-            return [0, 0, 0]
+                if row['user']['marker'] == 'pro':
+                    pro_list.append(info)
+                else:
+                    nopro_list.append(info)
+              
+        if len(pro_list) <= 10 and len(nopro_list) <= 0:
+            return [[0, 0, 0], [0, 0, 0]]
 
-        def index(official_list, index):
+        def index(infos, index):
             while True:
-                last_score = official_list[index - 1]['score']
-                score = official_list[index]['score']
+                last_score = infos[index - 1]['score']
+                score = rows[index]['score']
                 if last_score['value'] != score['value'] or last_score['time'][0] != score['time'][0]:
                     break
                 index += 1
-
             return index
 
-        # 金银铜奖数量
-        if len(official_list) >= 240:
-            gold_index = index(official_list, 24)
-            silver_index = index(official_list, 48 + 24)
-            bronze_index = index(official_list, 72 + 48 + 24)
-            medals = [gold_index, silver_index - gold_index, bronze_index - silver_index]
-        else:
-            official_len = len(official_list)
-            gold_index = index(official_list, int(official_len * 0.1))
-            silver_index = index(official_list, int(official_len * 0.3))
-            bronze_index = index(official_list, int(official_len * 0.6))
-            medals = [gold_index, silver_index - gold_index, bronze_index - silver_index]
+        medals = []
+        # 专业组金银铜奖数量
+        pro_len = len(pro_list)
+        gold_index = index(pro_list, int(pro_len * 0.1))
+        silver_index = index(pro_list, int(pro_len * 0.3))
+        bronze_index = index(pro_list, int(pro_len * 0.6))
+        medal = [gold_index, silver_index - gold_index, bronze_index - silver_index]
+        medals.append(medal)
 
-        for i, official in enumerate(official_list):
+        for i, pro in enumerate(pro_list):
             if i < gold_index:
-                rows[official['rows_index']]['ranks'][0]['segmentIndex'] = 0
+                rows[pro['rows_index']]['ranks'][1]['segmentIndex'] = 0
             elif i < silver_index:
-                rows[official['rows_index']]['ranks'][0]['segmentIndex'] = 1
+                rows[pro['rows_index']]['ranks'][1]['segmentIndex'] = 1
             elif i < bronze_index:
-                rows[official['rows_index']]['ranks'][0]['segmentIndex'] = 2
+                rows[pro['rows_index']]['ranks'][1]['segmentIndex'] = 2
+
+        # 非专业组
+        nopro_len = len(nopro_list)
+        gold_index = index(nopro_list, int(nopro_len * 0.1))
+        silver_index = index(nopro_list, int(nopro_len * 0.3))
+        bronze_index = index(nopro_list, int(nopro_len * 0.6))
+        # TODO: 需要添加额外条件，非专业同奖项做题数最多比专业组少 1 题
+        medal = [gold_index, silver_index - gold_index, bronze_index - silver_index]
+        medals.append(medal)
+
+        for i, nopro in enumerate(nopro_list):
+            if i < gold_index:
+                rows[nopro['rows_index']]['ranks'][2]['segmentIndex'] = 0
+            elif i < silver_index:
+                rows[nopro['rows_index']]['ranks'][2]['segmentIndex'] = 1
+            elif i < bronze_index:
+                rows[nopro['rows_index']]['ranks'][2]['segmentIndex'] = 2
+
+
 
         return medals
+
+    def _nopro_medals():
+        pass
 
 
 if __name__ == '__main__':
