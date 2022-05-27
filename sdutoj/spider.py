@@ -106,7 +106,7 @@ class Spider:
         d = self._post(path='getCompetitionProblemConfig', json=json)
         problems = []
         for i, pro in enumerate(d['rows']):
-            problems.append([pro['problemId'], chr(ord('A')+i), pro['balloonColor'], ''])
+            problems.append([pro['problemId'], chr(ord('A')+i), '', pro['balloonColor']])
         contest_config['problems'] = problems
 
         return contest_config
@@ -495,13 +495,13 @@ class Calculation:
         rows = self.calculation()
         data['rows'] = rows
 
-        medals = self.medals(rows)
-        pro_medal = medals[0]
-        for i, series in enumerate(data['series'][1]['segments']):
-            series['count'] = pro_medal[i]
-        nopro_medal = medals[1]
-        for i, series in enumerate(data['series'][2]['segments']):
-            series['count'] = nopro_medal[i]
+        # medals = self.medals(rows)
+        # pro_medal = medals[0]
+        # for i, series in enumerate(data['series'][1]['segments']):
+        #     series['count'] = pro_medal[i]
+        # nopro_medal = medals[1]
+        # for i, series in enumerate(data['series'][2]['segments']):
+        #     series['count'] = nopro_medal[i]
 
         return data
 
