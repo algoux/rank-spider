@@ -253,7 +253,11 @@ class Calculation:
         for submit in submissions:
             submit_id = submit['solution_id']
             team_id = submit['user_id']
-            problem = self.problem_dict[submit['problem_id']]
+            problem = self.problem_dict.get(submit['problem_id'])
+            if problem is None:
+                print(f'获取到未知题目的提交，请检查是否更换了题目，未知提交记录: {submit}')
+                continue
+
             result = status.setdefault(submit['status'], 'unknow')
             # 不明提交，中断后续数据的获取
             if result == 'unknow':
