@@ -47,7 +47,7 @@ def main():
         scroll_data, sid = calculation.scroll(solutions)
         if sid is not None:
             solution_id = sid
-        elif solution_id != config['submit_id']:
+        elif solution_id != config['submit_id'] and contest_config['end_at'] > t:
             print('数据拉取失败，10 秒后拉取。。。')
             time.sleep(10)
             continue
@@ -279,17 +279,18 @@ class Calculation:
             }
 
             if not self.user[team_id]['accept'].get(submit['problem_id']):
+                pid = submit['problem_id']
                 t = self.problem_status.setdefault(team_id, {})
-                s = t.setdefault(problem_alias, set())
+                s = t.setdefault(pid, set())
                 s.add(submit_id)
-                t[problem_alias] = s
+                t[pid] = s
                 self.problem_status[team_id] = t
 
                 if result == 'AC':
-                    self.user[team_id]['accept'][submit['problem_id']] = duration
+                    self.user[team_id]['accept'][pid] = duration
                     row['score']['value'] += 1
-                    if not self.first_blood.get(submit['problem_id']) and self.user[team_id]['official']:
-                        self.first_blood[submit['problem_id']] = team_id
+                    if not self.first_blood.get(pid) and self.user[team_id]['official']:
+                        self.first_blood[pid] = team_id
                         row['result'] = 'FB'
 
             # 如果提交是五分钟前的提交，则不进行滚动展示
