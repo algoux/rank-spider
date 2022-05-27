@@ -101,7 +101,8 @@ class Spider:
 
         # 获取封榜时间
         d = self._post(path='getCompetitionSettings', json=json)
-        contest_config['frozen'] = d['frozenLength']
+        # 比赛开始后经过多少时间进行封榜
+        contest_config['frozen'] = contest_config['end_at'] - contest_config['start_at'] - d['frozenLength']
 
         # 获取题目配置
         d = self._post(path='getCompetitionProblemConfig', json=json)
