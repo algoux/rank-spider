@@ -495,13 +495,13 @@ class Calculation:
         rows = self.calculation()
         data['rows'] = rows
 
-        # medals = self.medals(rows)
-        # pro_medal = medals[0]
-        # for i, series in enumerate(data['series'][1]['segments']):
-        #     series['count'] = pro_medal[i]
-        # nopro_medal = medals[1]
-        # for i, series in enumerate(data['series'][2]['segments']):
-        #     series['count'] = nopro_medal[i]
+        medals = self.medals(rows)
+        pro_medal = medals[0]
+        for i, series in enumerate(data['series'][1]['segments']):
+            series['count'] = pro_medal[i]
+        nopro_medal = medals[1]
+        for i, series in enumerate(data['series'][2]['segments']):
+            series['count'] = nopro_medal[i]
 
         return data
 
@@ -521,8 +521,8 @@ class Calculation:
                     nopro_list.append(info)
               
         # 对奖牌显示进行限制，如果专业组和非专业组都不满足有 10 人 AC 一题，则不显示奖牌数量
-        if len(pro_list) <= 10 and len(nopro_list) <= 0:
-            return [[0, 0, 0], [0, 0, 0]]
+        # if len(pro_list) <= 10 and len(nopro_list) <= 10:
+        #     return [[0, 0, 0], [0, 0, 0]]
 
         medals = []
         # 专业组金银铜奖数量
@@ -579,8 +579,9 @@ class Calculation:
         Description: 非专业组的同类奖项需要满足在 10 20 30 的范围且同类型奖项解出题目数最多只能比专业组少一题
         """
         while index > 0:
-            if nopro_list[index-1]['score']['value'] < pro_solve_num - 1:
-                index -= 1
+            if nopro_list[index-1]['score']['value'] >= pro_solve_num:
+                break
+            index -= 1
         return index
 
 
