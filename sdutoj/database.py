@@ -56,7 +56,7 @@ def main():
     # 导入数据
     insert(connect, infos)
     connect.close()
-    print(f'成功导入 {len(infos)} 支队伍数据，队伍具体信息如下：')
+    print(f'成功导入 {len(infos)} 支队伍数据，队伍具体信息如下，格式 [team_id, title, organization, slogan, official, marker]:')
     print(infos)
 
 
@@ -92,9 +92,13 @@ def team_info(contest_id: int) -> list:
         return
 
     rows = result.json()['data']['rows']
-    print(f'共有 {len(rows)} 支队伍参加比赛')
     infos = []
     for row in rows:
+        # 规则映射：https://github.com/sdutacm/onlinejudge3-common/blob/master/enums/index.ts
+        if row['role'] != 2 or row['status'] not in [1, 5, 6] or row['banned']:
+            print(f'用户不是参赛人员或已被封禁 {row}')
+            continue
+
         title = row['info'].setdefault('nickname', '未知')
         organization = row['info'].setdefault('subname', '')
         slogan = row['info'].setdefault('slogan', '')
@@ -131,7 +135,6 @@ def create_table(connection: sqlite3.Connection, sql: str):
 
 
 def insert(connection: sqlite3.Connection, params):
-    print(params)
     cursor = connection.cursor()
     sql = 'REPLACE INTO team VALUES (?, ?, ?, ?, ?, ?)'
     cursor.executemany(sql, params)
