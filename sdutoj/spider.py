@@ -519,8 +519,8 @@ class Calculation:
                 else:
                     nopro_list.append(info)
               
-        # 对奖牌显示进行限制，如果专业组和非专业组都不满足有 10 人 AC 一题，则不显示奖牌数量
-        if len(pro_list) <= 10 or len(nopro_list) <= 10:
+        # 对奖牌显示进行限制，如果专业组 AC 都不满 10 人，非专业组肯定不满，此处有个假设：专业组比非专业组平均水平更高
+        if len(pro_list) <= 10:
             return [[0, 0, 0], [0, 0, 0]]
 
         medals = []
@@ -538,6 +538,10 @@ class Calculation:
                 rows[pro['rows_index']]['ranks'][1]['segmentIndex'] = 1
             elif i < bronze_i:
                 rows[pro['rows_index']]['ranks'][1]['segmentIndex'] = 2
+
+        if len(nopro_list) <= 10:
+            medals.append([0, 0, 0])
+            return medals
 
         # 非专业组
         nopro_len = len(nopro_list)
