@@ -520,8 +520,8 @@ class Calculation:
                     nopro_list.append(info)
               
         # 对奖牌显示进行限制，如果专业组和非专业组都不满足有 10 人 AC 一题，则不显示奖牌数量
-        # if len(pro_list) <= 10 and len(nopro_list) <= 10:
-        #     return [[0, 0, 0], [0, 0, 0]]
+        if len(pro_list) <= 10 and len(nopro_list) <= 10:
+            return [[0, 0, 0], [0, 0, 0]]
 
         medals = []
         # 专业组金银铜奖数量
