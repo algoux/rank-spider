@@ -6,6 +6,8 @@ submit_id: 1
 limit: 30
 # 爬取间隔，不要设置太大和滚动展示的时效性相关 单位秒
 duration: 2
+# 是否进行封榜
+frozen: true
 # 能够看到榜单用户的 cookie
 cookie: ""
 

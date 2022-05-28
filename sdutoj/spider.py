@@ -37,6 +37,9 @@ def main():
 
     spider = Spider(headers=headers, contest_id=config['contest_id'], limit=config['limit'])
     contest_config = spider.get_contest_config()
+
+    if not config['frozen']:
+        contest_config['frozen'] = -1 # 距离比赛结束 -1 秒封榜，即不进行封榜操作
     
     db = Database(config.setdefault('database', 'sdutoj.db'))
     calculation = Calculation(contest_config, db)
