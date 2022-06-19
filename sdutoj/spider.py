@@ -50,8 +50,8 @@ def main():
         scroll_data, sid = calculation.scroll(solutions)
         if sid is not None:
             solution_id = sid
-        elif solution_id != config['submit_id'] and contest_config['end_at'] > t:
-            print('数据拉取失败，10 秒后拉取。。。')
+        elif solution_id != config['submit_id'] and contest_config['end_at'] >= t:
+            print('数据拉取失败，10 秒后拉取。。。 end: {}, now: {}'.format(contest_config['end_at'], t))
             time.sleep(10)
             continue
 
@@ -140,7 +140,7 @@ class Spider:
         }
         d = self._post(path='getSolutionList', json=json)
         if d == None or len(d['rows']) == 0:
-            return [], 0
+            return [], int(time.time())
         
         results = []
         for row in d['rows']:
@@ -462,7 +462,7 @@ class Calculation:
             'type': 'general',
             'version': '0.2.1',
         }
-        if self.start_at > now:
+        if self.end_at >= now:
             data['_now'] = now_time
 
         problems = []
@@ -530,6 +530,7 @@ class Calculation:
         silver_i = self._get_index(pro_list, math.ceil(pro_len * 0.3))
         bronze_i = self._get_index(pro_list, math.ceil(pro_len * 0.6))
         medals.append([gold_i, silver_i - gold_i, bronze_i - silver_i])
+        pg, ps, pb = gold_i, silver_i, bronze_i
 
         for i, pro in enumerate(pro_list):
             if i < gold_i:
@@ -549,9 +550,9 @@ class Calculation:
         silver_i = self._get_index(nopro_list, math.ceil(nopro_len * 0.3))
         bronze_i = self._get_index(nopro_list, math.ceil(nopro_len * 0.6))
         # 非专业组有额外限制
-        gold_i = self._nopro_medals(nopro_list, gold_i, pro_list[medals[0][0]]['score']['value'])
-        silver_i = self._nopro_medals(nopro_list, silver_i, pro_list[medals[0][1]]['score']['value'])
-        bronze_i = self._nopro_medals(nopro_list, bronze_i, pro_list[medals[0][2]]['score']['value'])
+        gold_i = self._nopro_medals(nopro_list, gold_i, pro_list[pg]['score']['value'])
+        silver_i = self._nopro_medals(nopro_list, silver_i, pro_list[ps]['score']['value'])
+        bronze_i = self._nopro_medals(nopro_list, bronze_i, pro_list[pb]['score']['value'])
         medals.append([gold_i, silver_i - gold_i, bronze_i - silver_i])
 
         for i, nopro in enumerate(nopro_list):
@@ -582,7 +583,7 @@ class Calculation:
         Description: 非专业组的同类奖项需要满足在 10 20 30 的范围且同类型奖项解出题目数最多只能比专业组少一题
         """
         while index > 0:
-            if nopro_list[index-1]['score']['value'] >= pro_solve_num:
+            if nopro_list[index-1]['score']['value'] >= pro_solve_num-1:
                 break
             index -= 1
         return index
