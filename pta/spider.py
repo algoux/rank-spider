@@ -372,7 +372,7 @@ class Calculation:
                 if user['accept'].get(problem[1]):
                     problem_time = user['accept'][problem[1]]
                     stat['result'] = 'AC'
-                    if self.first_blood[problem[1]] == user['id']:
+                    if self.first_blood.get(problem[1]) == user['id']:
                         stat['result'] = 'FB'
                 stat['time'][0] = problem_time
                 stat['tries'] = len(problem_tries)
@@ -403,7 +403,7 @@ class Calculation:
                 'result': row[3],
                 'time': [row[4], 's'],
             }
-            if row[3] == "AC" and self.first_blood[problem] == team_id:
+            if row[3] == "AC" and self.first_blood.get(problem) == team_id:
                 solution['result'] = 'FB'
             solutions.append(solution)
             if row[3] == '?':
