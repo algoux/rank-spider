@@ -104,12 +104,12 @@ class Marker:
 
 
 class User:
-    def __init__(self, name: str, id: str = None, organization: str = None, member: str = None, official: bool = None, marker: Marker = None) -> None:
+    def __init__(self, name: str, id: str = None, organization: str = None, members: List[str] = None, official: bool = None, marker: Marker = None) -> None:
         '''
             name: 用户名或队伍名
             id: 队伍 ID【可选】
             organization: 学校或组织或机构【可选】
-            member: 人员信息，格式建议：人名(教练)/队员1/队员2/队员3 或 队员1/队员2/队员3【可选】
+            member: 队员名【可选】
             official: 是否是正式比赛队伍【可选】
             marker: 特殊队伍标记【可选】
         '''
@@ -118,8 +118,11 @@ class User:
             self.user['id'] = id
         if organization is not None:
             self.user['organization'] = organization
-        if member is not None:
-            self.user['member'] = member
+        if members is not None:
+            team = []
+            for m in members:
+                team.append({'name': m})
+            self.user['teamMembers'] = team
         if official is not None:
             self.user['official'] = official
         if marker is not None:
@@ -256,7 +259,6 @@ def main():
     series = [Series('rank', [('金奖', 1, Style_Gold)])]
     rows = [Row([Order(1, 1)], User('一队'), (1, 1000), [Status(SR_FirstBlood, 10, 1), Status(SR_FirstBlood, 10, 1)]), Row([Order(2, 2)], User('二队'), (1, 1200), [Status(SR_Accepted, 100, 3), Status(SR_FirstBlood, 10, 1)])]
     rank = Rank(contest, problems, series, rows)
-    print(rank.result())
     print(rank.to_str())
 
 
