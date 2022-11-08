@@ -51,20 +51,19 @@ class Contest:
 
 
 class Problem:
-    def __init__(self, alias: str, statistics: Tuple[int, int], style: Tuple[str, str] = None, **kwargs) -> None:
+    def __init__(self, alias: str, statistics: Tuple[int, int] = None, style: Tuple[str, str] = None, **kwargs) -> None:
         '''
             alias: 题号
-            statistics: 题目统计数据 (通过提交数, 总提交数)
+            statistics: 题目统计数据 (通过提交数, 总提交数)【可选】
             style: 题目展示颜色 (背景色, 字体色)【可选】
             kwargs: 可选参数，当前支持 title 题目标题，link 题目外链
         '''
-        self.problem = {
-                'alias': alias,
-                'statistics': {
+        self.problem = {'alias': alias}
+        if statistics is not None:
+            self.problem['statistics'] = {
                     'accepted': statistics[0],
                     'submitted': statistics[1],
                 },
-            }
         if style is not None:
             self.problem['style'] = {
                 'backgroundColor': style[0],
@@ -130,20 +129,22 @@ class User:
 
 
 class Order:
-    def __init__(self, order: int, segment_index: int = None) -> None:
+    def __init__(self, order: int = None, segment_index: int = None) -> None:
         '''
-            order: 排行榜的排名顺序
+            order: 排行榜的排名顺序【可选】
             segment_index: 获得奖项的序号【可选】
         '''
         self.order = {
-            'rank': order
+            'rank': None
         }
+        if order is not None:
+            self.order['rank'] = order
         if segment_index is not None:
             self.order['segmentIndex'] = segment_index
 
 
 class Status:
-    def __init__(self, result: str, duration: int, tries: int, solutions:  List[Tuple[str, int]] = None) -> None:
+    def __init__(self, result: str = None, duration: int = 0, tries: int = 0, solutions:  List[Tuple[str, int]] = None) -> None:
         '''
             result: 题目最终结果
             duration: 解题总耗时，单位秒
