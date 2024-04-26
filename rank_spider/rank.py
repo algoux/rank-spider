@@ -41,10 +41,10 @@ class Contest:
             link: 比赛的外链地址【可选】
         '''
         self.contest = {
-            'title': title,
+            'title': {'zh-CN': title, 'en': '', 'fallback': ''},
             'startAt': time.strftime('%Y-%m-%dT%H:%M:%S+08:00', time.localtime(start_at)),
             'duration': [duration, "h"],
-            'frozenDuration': [frozen_duration, "h"],
+            'frozenDuration': [frozen_duration, "h"]
         }
         if link is not None:
             self.contest['link'] = link  
@@ -61,9 +61,9 @@ class Problem:
         self.problem = {'alias': alias}
         if statistics is not None:
             self.problem['statistics'] = {
-                    'accepted': statistics[0],
-                    'submitted': statistics[1],
-                },
+                'accepted': statistics[0],
+                'submitted': statistics[1],
+            }
         if style is not None:
             self.problem['style'] = {
                 'backgroundColor': style[0],
@@ -125,7 +125,7 @@ class User:
         if official is not None:
             self.user['official'] = official
         if marker is not None:
-            self.user['marker'] = marker['id']
+            self.user['marker'] = marker.marker['id']
 
 
 class Order:
@@ -190,7 +190,7 @@ class Row:
 
 
 class Rank:
-    def __init__(self, contest: Contest, problems: List[Problem], series: List[Series], rows: List[Row], markers: List[Marker] = None) -> None:
+    def __init__(self, contest: Contest, problems: List[Problem], series: List[Series], rows: List[Row], markers: List[Marker] = None, contributors: List[str] = None) -> None:
         '''
             contest: 比赛基础信息
             problems: 题目列表
@@ -215,6 +215,7 @@ class Rank:
             self.markers = []
             for m in markers:
                 self.markers.append(m.marker)
+        self.contributors = contributors
         
         self.__check()
     
@@ -239,14 +240,17 @@ class Rank:
     def result(self) -> Dict[str, Any]:
         rank = {
             'type': 'general',
-            'version': '0.2.1',
+            'version': '0.2.3',
             'contest': self.contest,
             'problems': self.problems,
             'series': self.series,
             'rows': self.__transform_rows(),
+            'sorter': {'algorithm': 'ICPC', 'config': {'penalty': [20, 'min']}}
         }
         if self.markers is not None:
             rank['markers'] = self.markers
+        if self.contributors is not None:
+            rank['contributors'] = self.contributors
         
         return rank
     
