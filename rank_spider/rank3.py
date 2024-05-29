@@ -32,6 +32,22 @@ Style_Purple = 'purple'
 Style_Pink = 'pink'
 
 
+# const srkDefaultBallonColors = [
+#   'rgba(189, 14, 14, 0.7)',
+#   'rgba(149, 31, 217, 0.7)',
+#   'rgba(16, 32, 96, 0.7)',
+#   'rgba(38, 185, 60, 0.7)',
+#   'rgba(239, 217, 9, 0.7)',
+#   'rgba(243, 88, 20, 0.7)',
+#   'rgba(12, 76, 138, 0.7)',
+#   'rgba(156, 155, 155, 0.7)',
+#   'rgba(4, 154, 115, 0.7)',
+#   'rgba(159, 19, 236, 0.7)',
+#   'rgba(42, 197, 202, 0.7)',
+#   'rgba(142, 56, 54, 0.7)',
+#   'rgba(144, 238, 144, 0.7)',
+# ];
+
 class Contest:
     def __init__(self, title: str, start_at: int, duration: float, frozen_duration: float = 0, link: str = None) -> None:
         '''
@@ -44,8 +60,8 @@ class Contest:
         self.contest = {
             'title': {'zh-CN': title, 'fallback': title},
             'startAt': time.strftime('%Y-%m-%dT%H:%M:%S+08:00', time.localtime(start_at)),
-            'duration': [duration, "h"],
-            'frozenDuration': [frozen_duration, "h"]
+            'duration': [int(duration), "h"],
+            'frozenDuration': [int(frozen_duration), "h"]
         }
         if link is not None:
             self.contest['link'] = link  
@@ -65,6 +81,7 @@ class Problem:
                 'accepted': statistics[0],
                 'submitted': statistics[1],
             }
+        f = 0
         if style is not None:
             self.problem['style'] = {
                 'backgroundColor': style[0],
@@ -150,8 +167,9 @@ class Status:
                 })
 
 
+
 class Row:
-    def __init__(self, user: User, score: Tuple[int, int], statuses: List[Status]) -> None:
+    def __init__(self, user: User, score: Tuple[int, int], statuses: List[Status], num_problems: int) -> None:
         '''
             ranks: 与 Series 对应，Series 有几项 ranks 数组元素就有多少
             user: 用户信息
@@ -161,15 +179,26 @@ class Row:
         self.user = user.user
         self.score = {'value': score[0], 'time': [score[1], 's']}
         self.statuses = []
-        for s in statuses:
-            status = {
-                'result': s.result,
-                'time': [s.duration, 's'],
-                'tries': s.tries,
-            }
-            if s.solutions is not None:
-                status['solutions'] = s.solutions
-            self.statuses.append(status)
+        if len(statuses) == 0:  # 如果statuses为空
+            for _ in range(num_problems):  # 按照题目数量添加空的status字段
+                status = {
+                    'result': None,
+                    'time': [0, 's'],
+                    'tries': 0,
+                }
+                self.statuses.append(status)
+        else :
+            for s in statuses:
+                status = {
+                    'result': s.result,
+                    'time': [max(s.duration - max((s.tries - 1),0) * 20 * 60 , 0), 's'],
+                    'tries': s.tries,
+                }
+                if s.solutions is not None:
+                    status['solutions'] = s.solutions
+                self.statuses.append(status)
+
+
 
 
 class Rank:
@@ -222,12 +251,27 @@ class Rank:
     def result(self) -> Dict[str, Any]:
         rank = {
             'type': 'general',
-            'version': '0.3.2',
+            'version': '0.3.4',
             'contest': self.contest,
             'problems': self.problems,
             'series': self.series,
             'rows': self.__transform_rows(),
-            'sorter': {'algorithm': 'ICPC', 'config': {'penalty': [20, 'min']}}
+            'sorter': {
+                'algorithm': 'ICPC',
+                'config': {
+                    "noPenaltyResults": [
+                        "FB",
+                        "AC",
+                        "?",
+                        "CE",
+                        "UKE",
+                        None
+                    ],
+                    'penalty': [20, 'min'],
+                    "timePrecision": "min",
+                    "timeRounding": "floor"
+                }
+            }
         }
         if self.markers is not None:
             rank['markers'] = self.markers
