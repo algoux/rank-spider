@@ -49,12 +49,29 @@ sr_results = {
 }
 
 
+srkDefaultBallonColors = [
+  'rgba(189, 14, 14, 0.7)',
+  'rgba(149, 31, 217, 0.7)',
+  'rgba(16, 32, 96, 0.7)',
+  'rgba(38, 185, 60, 0.7)',
+  'rgba(239, 217, 9, 0.7)',
+  'rgba(243, 88, 20, 0.7)',
+  'rgba(12, 76, 138, 0.7)',
+  'rgba(156, 155, 155, 0.7)',
+  'rgba(4, 154, 115, 0.7)',
+  'rgba(159, 19, 236, 0.7)',
+  'rgba(42, 197, 202, 0.7)',
+  'rgba(142, 56, 54, 0.7)',
+  'rgba(144, 238, 144, 0.7)',
+];
+
 class Parse:
     time_unit = 'ms'
     def __init__(self, config: Dict, teams: Dict, runs: Dict) -> None:
         self.config = config
         self.teams = teams
         self.runs = runs
+        self.num_problems = len(config['problem_id'])
 
         self.statistics = [[0, 0] for i in self.config['problem_id']]
         self.statuses = {}
@@ -66,11 +83,23 @@ class Parse:
 
     def problems(self) -> List[rank3.Problem]:
         problems = []
+        f = 1
         for i, v in enumerate(self.config['problem_id']):
             style = None
             if self.config.get('balloon_color') is not None:
                 color = self.config['balloon_color'][i]
                 style = (color['background_color'], color['color'])
+                if(i <= 12 and color['background_color'] != srkDefaultBallonColors[i]):
+                    f = 0
+                    break
+
+        for i, v in enumerate(self.config['problem_id']):
+            style = None
+            if self.config.get('balloon_color') is not None:
+                color = self.config['balloon_color'][i]
+                style = (color['background_color'], color['color'])
+            if f == 1:
+                style = None
             problems.append(rank3.Problem(v, self.statistics[i], style))
         return problems
 
@@ -116,26 +145,39 @@ class Parse:
 
         rows = []
         for d in data:
-            row = rank3.Row(d['user'], d['score'], d['status'])
+            row = rank3.Row(d['user'], d['score'], d['status'],self.num_problems)
             rows.append(row)
         return rows
 
     def __calculate(self) -> None:
+
         frist_blood = [0 for i in self.config['problem_id']]
+
         for v in self.runs:
+
             if self.statuses.get(str(v['team_id'])) is None:
                 self.statuses[str(v['team_id'])] = [rank3.Status() for i in self.config['problem_id']]
             status = self.statuses[str(v['team_id'])][v['problem_id']]
-            if status.result == rank3.SR_Accepted:
-                continue
-            
+
             result = sr_results.get(v['status'].upper())
             if result is None:
                 url = contest_url.get(self.config["contest_name"])
-                unkown = unkown_contest.setdefault(url, {'name': self.config["contest_name"], 'status': set(), 'count': 0})
+                unkown = unkown_contest.setdefault(url,
+                                                   {'name': self.config["contest_name"], 'status': set(), 'count': 0})
                 unkown['status'].add(v["status"])
                 unkown['count'] += 1
                 continue
+
+            if status.solutions is None:
+                status.solutions = []
+            status.solutions.append({
+                'result': result,
+                'time': [v['timestamp'], Parse.time_unit],
+            })
+
+            if status.result in [rank3.SR_Accepted, rank3.SR_FirstBlood]:
+                continue
+
 
             tt = v['timestamp'] * 1000 if Parse.time_unit == 's' else v['timestamp']
             if result == rank3.SR_Accepted:
@@ -146,23 +188,17 @@ class Parse:
             status.result = result
             if result not in [rank3.SR_FirstBlood, rank3.SR_Accepted, rank3.SR_Rejected, rank3.SR_Frozen]:
                 status.result = rank3.SR_Rejected
-            
-            if result in [rank3.SR_FirstBlood, rank3.SR_Accepted]:
+
+            if result in [rank3.SR_FirstBlood, rank3.SR_Accepted] :
                 status.duration = 20 * 60 * 1000 * status.tries + tt
-                # print(f'duration={status.duration}, tries={status.tries}, timestamp={v["timestamp"]}, unit={Parse.time_unit}')
-            
-            if result not in [rank3.SR_CompilationError, rank3.SR_PresentationError, rank3.SR_UnknownError, rank3.SR_NoOutput, rank3.SR_RuntimeError]:
+
+
+            if result not in [rank3.SR_CompilationError, rank3.SR_PresentationError, rank3.SR_UnknownError]:
                 status.tries += 1
 
-            if status.solutions is None:
-                status.solutions = []
-            status.solutions.append({
-                'result': result,
-                'time': [v['timestamp'], Parse.time_unit],
-            })
             self.statuses[str(v['team_id'])][v['problem_id']] = status
 
-            if result == rank3.SR_Accepted:
+            if result == rank3.SR_Accepted or result == rank3.SR_FirstBlood :
                 self.statistics[v['problem_id']][0] += 1
             self.statistics[v['problem_id']][1] += 1
 
@@ -222,7 +258,7 @@ def call_rank(path: str, name: str):
     series = parse.series()
     marker = parse.markers()
     rows = parse.rows()
-    r = rank3.Rank(contest, problems, series, rows, marker, contributors=['XCPCIO (https://xcpcio.com/)', 'algoUX (https://algoux.org)'])
+    r = rank3.Rank(contest, problems, series, rows, marker, contributors=['XCPCIO (https://xcpcio.com)', 'algoUX (https://algoux.org)'])
     with open(name, 'w', encoding='utf-8') as file:
         json.dump(r.result(), file, ensure_ascii=False)
 
