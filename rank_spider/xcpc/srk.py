@@ -41,7 +41,7 @@ class Contest:
             link: 比赛的外链地址【可选】
         '''
         self.contest = {
-            'title': {'zh-CN': title, 'en': '', 'fallback': ''},
+            'title': {'zh-CN': title, 'fallback': title},
             'startAt': time.strftime('%Y-%m-%dT%H:%M:%S+08:00', time.localtime(start_at)),
             'duration': [duration, "h"],
             'frozenDuration': [frozen_duration, "h"]
@@ -76,7 +76,7 @@ class Problem:
 
 
 class Series:
-    def __init__(self, title: str, segments: List[Tuple[str, int, str]] = None) -> None:
+    def __init__(self, title: str, segments: List[Tuple[str, str]] = None, rule: Dict = None) -> None:
         '''
             title: 排行榜名称
             segment: 奖项，三元组数组[(奖牌名称, 数量, 颜色)]【可选】
@@ -87,10 +87,11 @@ class Series:
             for segment in segments:
                 sgs.append({
                     'title': segment[0], # Gold Medalist, Silver Medalist, Bronze Medalist
-                    'count': segment[1],
-                    'style': segment[2], # gold, silver, bronze
+                    'style': segment[1], # gold, silver, bronze
                 })
             self.series['segments'] = sgs
+        if rule is not None:
+            self.series['rule'] = rule
 
 
 class Marker:
@@ -128,21 +129,6 @@ class User:
             self.user['marker'] = marker.marker['id']
 
 
-class Order:
-    def __init__(self, order: int = None, segment_index: int = None) -> None:
-        '''
-            order: 排行榜的排名顺序【可选】
-            segment_index: 获得奖项的序号【可选】
-        '''
-        self.order = {
-            'rank': None
-        }
-        if order is not None:
-            self.order['rank'] = order
-        if segment_index is not None:
-            self.order['segmentIndex'] = segment_index
-
-
 class Status:
     def __init__(self, result: str = None, duration: int = 0, tries: int = 0, solutions:  List[Tuple[str, int]] = None) -> None:
         '''
@@ -164,17 +150,13 @@ class Status:
 
 
 class Row:
-    def __init__(self, ranks: List[Order], user: User, score: Tuple[int, int], statuses: List[Status]) -> None:
+    def __init__(self, user: User, score: Tuple[int, int], statuses: List[Status]) -> None:
         '''
             ranks: 与 Series 对应，Series 有几项 ranks 数组元素就有多少
             user: 用户信息
             score: 解题总数和总用时，单位秒 (解题数, 总用时)
             statuses: 和 Problem 对应，比赛有多少道题目 statuses 数组元素有多少
         '''
-        self.ranks = []
-        for r in ranks:
-            self.ranks.append(r.order)
-
         self.user = user.user
         self.score = {'value': score[0], 'time': [score[1], 's']}
         self.statuses = []
@@ -229,7 +211,6 @@ class Rank:
         rows = []
         for r in self.rows:      
             rows.append({
-                'ranks': r.ranks,
                 'user': r.user,
                 'score': r.score,
                 'statuses': r.statuses,
@@ -240,7 +221,7 @@ class Rank:
     def result(self) -> Dict[str, Any]:
         rank = {
             'type': 'general',
-            'version': '0.2.3',
+            'version': '0.3.2',
             'contest': self.contest,
             'problems': self.problems,
             'series': self.series,
@@ -262,7 +243,7 @@ def main():
     contest = Contest('contest 2022', 1666511976, 5, 1)
     problems = [Problem('A', (5, 20)), Problem('B', (1, 10))]
     series = [Series('rank', [('金奖', 1, Style_Gold)])]
-    rows = [Row([Order(1, 1)], User('一队'), (1, 1000), [Status(SR_FirstBlood, 10, 1), Status(SR_FirstBlood, 10, 1)]), Row([Order(2, 2)], User('二队'), (1, 1200), [Status(SR_Accepted, 100, 3), Status(SR_FirstBlood, 10, 1)])]
+    rows = [Row(User('一队'), (1, 1000), [Status(SR_FirstBlood, 10, 1), Status(SR_FirstBlood, 10, 1)]), Row(User('二队'), (1, 1200), [Status(SR_Accepted, 100, 3), Status(SR_FirstBlood, 10, 1)])]
     rank = Rank(contest, problems, series, rows)
     print(rank.to_str())
 

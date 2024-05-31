@@ -1,6 +1,5 @@
-
-import time
 import re
+import json
 import requests
 import rank
 
@@ -50,7 +49,7 @@ class Parse:
         self.table = soup.find('table', id='rank')
 
     def contest(self) -> rank.Contest:
-        return rank.Contest('第五届中国大学生程序设计竞赛总决赛---中国传媒大学', 1573952400, 5, 1)
+        return rank.Contest('2019年中国大学生程序设计竞赛 哈尔滨站-东北林业大学', 1573952400, 5, 1)
 
     def problems(self) -> List[rank.Problem]:
         return [rank.Problem('A'), rank.Problem('B'), rank.Problem('C'), rank.Problem('D'), rank.Problem('E'), 
@@ -80,11 +79,11 @@ class Parse:
                 rk = rank.Order(1, 0)
             elif tds[0].string != '*':
                 index = int(tds[0].string)
-                if index < self.gold:
+                if index <= self.gold:
                     rk = rank.Order(index, 0)
-                elif index < self.silver:
+                elif index <= self.silver:
                     rk = rank.Order(index, 1)
-                elif index < self.bronze:
+                elif index <= self.bronze:
                     rk = rank.Order(index, 2)
                 else:
                     rk = rank.Order(index)
@@ -129,12 +128,15 @@ class Parse:
 def main():
     # page = Scoreboard().spider('http://acm.sdut.edu.cn/acmss/ccpc/2019/beijing/index.html')
     page = get_page('http://acm.sdut.edu.cn/acmss/ccpc/2019/beijing/index.html')
+    # page = get_page('http://acm.sdut.edu.cn/acmss/ccpc/2019/haerbin/index.htm')
     parse = Parse(page)
     contest = parse.contest()
     problems = parse.problems()
     series = parse.series()
     rows = parse.rows()
     r = rank.Rank(contest, problems, series, rows)
+    with open('ccpc2019beijing.srk.json', 'w', encoding='utf-8') as file:
+        json.dump(r.result(), file, ensure_ascii=False)
     print(r.to_str(False))
 
 
