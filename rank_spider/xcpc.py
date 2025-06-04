@@ -127,14 +127,31 @@ class Parse:
     def rows(self) -> List[rank3.Row]:
         data = []
         for k, v in self.teams.items():
-            official = v.get('official', 0) == 1
+
+            # 判断是否为正式队伍的逻辑
+            original_official = v.get('official', 0) == 1
+            group = v.get('group', [])
+            group_unofficial = 'unofficial' in group
+
+            explicit_official = v.get('official', False)
+            explicit_unofficial = v.get('unofficial', group_unofficial)
+
+            official = original_official  or explicit_official or not explicit_unofficial
+
+            # 判断是否为女队的逻辑
+            original_girl = v.get('girl') == 1
+            group_girl = 'girl' in group
+            is_girl_team = original_girl or group_girl
+
+
             marker = None
-            if v.get('girl') == 1:
+            if is_girl_team:
                 marker = rank3.Marker('female', '女队', 'pink')
             user = rank3.User(v['name'], k, v.get('organization', None), v.get('members', None), official, marker)
             cnt, ctms = 0, 0
             statuses = self.statuses.get(str(k), [])
             for v in statuses:
+
                 v.duration //= 1000
                 if v.result in [rank3.SR_Accepted, rank3.SR_FirstBlood]:
                     cnt += 1
@@ -226,6 +243,7 @@ def main():
     icpc.pop('2019world-finals')
     icpc.pop('2020world-finals')
     icpc.pop('2020world-finals-Invitational')
+    icpc.pop('48thworld-finals')
     for k, v in icpc.items():
         call_rank(path=v, name=f'icpc/icpc{k}.srk.json')
     for k, v in ccpc.items():
@@ -240,6 +258,7 @@ def call_rank(path: str, name: str):
     config = get(f'https://board.xcpcio.com/data{path}/config.json')
     teams = get(f'https://board.xcpcio.com/data{path}/team.json')
     runs = get(f'https://board.xcpcio.com/data{path}/run.json')
+
     set_contest_url(path, config)
     runs.sort(key=lambda x: x['timestamp'])
     if len(runs) == 0:
