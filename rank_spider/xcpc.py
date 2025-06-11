@@ -1,8 +1,8 @@
 import json
 import requests
 import rank3
-
-from typing import Dict, List
+import re
+from typing import Dict, List, Union
 
 
 # contest_name: url
@@ -63,7 +63,7 @@ srkDefaultBallonColors = [
   'rgba(42, 197, 202, 0.7)',
   'rgba(142, 56, 54, 0.7)',
   'rgba(144, 238, 144, 0.7)',
-];
+]
 
 class Parse:
     time_unit = 'ms'
@@ -72,6 +72,7 @@ class Parse:
         self.teams = teams
         self.runs = runs
         self.num_problems = len(config['problem_id'])
+        self.group = config.get('group', {})
 
         self.statistics = [[0, 0] for i in self.config['problem_id']]
         self.statuses = {}
@@ -103,31 +104,108 @@ class Parse:
             problems.append(rank3.Problem(v, self.statistics[i], style))
         return problems
 
-    def series(self) -> List[rank3.Series]:
+    def series(self, markers) -> Dict[str, Union[List[rank3.Series], bool]]:
         self.gold, self.silver, self.bronze = 0, 0, 0
+        ccpcFlag = False
+        toRemarks = True
         if type(self.config.get('medal')) is dict and self.config['medal'].get('official') is not None:
             self.gold = self.config['medal']['official']['gold']
             self.silver = self.config['medal']['official']['silver']
             self.bronze = self.config['medal']['official']['bronze']
+            toRemarks = False
+        elif type(self.config.get('medal')) is str:
+            if self.config.get('medal') == 'CCPC' or self.config.get('medal') == 'ccpc':
+                self.gold = 0.1
+                self.silver = 0.2
+                self.bronze = 0.3
+                ccpcFlag = True
+                toRemarks = False
+        else:
+            self.gold = 0
+            self.silver = 0
+            self.bronze = 0
 
         all_rank = rank3.Series(title='R#', rule={"preset": "Normal"})
-        icpc_rule = {
-            "preset": "ICPC",
-            "options": {
-                "count": {"value": [self.gold, self.silver, self.bronze]}
+
+
+ 
+        if ccpcFlag is False:
+            icpc_rule = {
+                "preset": "ICPC",
+                "options": {
+                    "count": {"value": [self.gold, self.silver, self.bronze]}
+                }
             }
-        }
+        else:
+            icpc_rule = {
+                "preset": "ICPC",
+                "options": {
+                    "ratio": {"value": [self.gold, self.silver, self.bronze]}
+                }
+            }
+        
+        anotherSeries = []
+        if len(markers) > 0:
+            if type(self.config.get('medal')) is dict and self.config['medal'].get('official') is None:
+                for key,value in self.config['medal'].items():
+                    if type(value) is dict and value.get('gold') is not None and value.get('silver') is not None and value.get('bronze') is not None:
+                        title = None
+                        for marker in markers:
+                            if marker.marker['id'] == key:
+                                title = marker.marker['label'] + '#'
+                                break
+                        if title is None:
+                            continue
+                        anotherSeries.append(rank3.Series(title=title, segments=[('金奖', rank3.Style_Gold), ('银奖', rank3.Style_Silver), ('铜奖', rank3.Style_Bronze)], rule={
+                            "preset": "ICPC",
+                            "options": {
+                                "count": {"value": [value['gold'], value['silver'], value['bronze']]}
+                            }
+                        }))
+                    else:
+                        continue
+
         offical_rank = rank3.Series(title='#', segments=[('金奖', rank3.Style_Gold), ('银奖', rank3.Style_Silver), ('铜奖', rank3.Style_Bronze)], rule=icpc_rule)
         school_rank = rank3.Series(title='S#', rule={"preset": "UniqByUserField", "options": {"field": "organization", "includeOfficialOnly": True}})
-        return [offical_rank, all_rank, school_rank]
+        result = [offical_rank]
+        if len(anotherSeries) > 0:
+            result += anotherSeries
+        result.append(all_rank)
+        result.append(school_rank)
+        return {
+            "rows": result,
+            "remarks": toRemarks
+        }
 
     def markers(self) -> List[rank3.Marker]:
-        return [rank3.Marker('female', '女队', 'pink')]
+        markers = []
+        colors = ['purple', 'blue', 'green', 'yellow', 'orange', 'red']
+        index = 0
+        femalePattern = r'女队'
+        starPattern = r'打星'
+        for key, value in self.group.items():
+            if re.search(femalePattern, value):
+                markers.append(rank3.Marker('female', value, 'pink'))
+                continue
+            if key == 'unofficial':
+                continue
+            if key == 'official':
+                continue
+            if re.search(starPattern, value):
+                continue
+            markers.append(rank3.Marker(key,value, colors[index % len(colors)]))
+            index += 1
+        return markers
 
-    def rows(self) -> List[rank3.Row]:
+    def rows(self, markers) -> List[rank3.Row]:
         data = []
         for k, v in self.teams.items():
+            u_markers = []
 
+            # 判断是否有教练
+            coach = None
+            if v.get('coach', None) is not None:
+                coach = v.get('coach')
             # 判断是否为正式队伍的逻辑
             original_official = v.get('official', 0) == 1
             group = v.get('group', [])
@@ -142,21 +220,36 @@ class Parse:
             original_girl = v.get('girl') == 1
             group_girl = 'girl' in group
             is_girl_team = original_girl or group_girl
-
-
-            marker = None
             if is_girl_team:
-                marker = rank3.Marker('female', '女队', 'pink')
-            user = rank3.User(v['name'], k, v.get('organization', None), v.get('members', None), official, marker)
+                u_markers.append(rank3.Marker('female', '女队', 'pink'))
+            # 判断为是否为其他队伍的逻辑
+            for t in group:
+                if t is not None and t != 'official' and t != 'unofficial' and t != 'girl':
+                    for m in markers:
+                        if m.marker['id'] == t:
+                            u_markers.append(m)
+            
+            members = None
+            if v.get('members', None) is not None:
+                members =  [x for x in v['members'] if x is not None and str(x).lower() != 'null']
+            if coach is not None and type(members) is list:
+                members.append(f"{coach} (教练)")
+            user = rank3.User(v['name'], k, v.get('organization', None), members, official, u_markers)
             cnt, ctms = 0, 0
             statuses = self.statuses.get(str(k), [])
+
+            use_accumulate_in_seconds = self.options()
+
             for v in statuses:
 
                 v.duration //= 1000
                 if v.result in [rank3.SR_Accepted, rank3.SR_FirstBlood]:
                     cnt += 1
-                    ctms += v.duration//60*60
-            score = [cnt, ctms]
+                    if use_accumulate_in_seconds:
+                        ctms += v.duration
+                    else:
+                        ctms += v.duration // 60 * 60
+            score = [cnt, ctms//60*60 if use_accumulate_in_seconds else ctms]
             data.append({'user': user, 'score': score, 'status': statuses})
         data.sort(key=lambda x: (x['score'][0], -x['score'][1]), reverse=True)
 
@@ -165,10 +258,19 @@ class Parse:
             row = rank3.Row(d['user'], d['score'], d['status'],self.num_problems)
             rows.append(row)
         return rows
-
+    
+    # 判断是否使用 accumulate_in_seconds 计算 penalty
+    # 如果使用 accumulate_in_seconds 则返回 True，否则返回 False
+    def options(self) -> bool:
+        use_accumulate_in_seconds = (
+                isinstance(self.config.get('options'), dict) and
+                self.config['options'].get('calculation_of_penalty') == 'accumulate_in_seconds_and_finally_to_the_minute'
+            )
+        return use_accumulate_in_seconds
+    
     def __calculate(self) -> None:
 
-        frist_blood = [0 for i in self.config['problem_id']]
+        first_blood = [0 for i in self.config['problem_id']]
 
         for v in self.runs:
 
@@ -185,6 +287,18 @@ class Parse:
                 unkown['count'] += 1
                 continue
 
+            if status.result in [rank3.SR_Accepted, rank3.SR_FirstBlood]:
+                continue
+
+
+            tt = v['timestamp'] * 1000 if Parse.time_unit == 's' else v['timestamp']
+            if result == rank3.SR_Accepted:
+                if first_blood[v['problem_id']] == 0 or first_blood[v['problem_id']] == tt:
+                    result = rank3.SR_FirstBlood
+                    first_blood[v['problem_id']] = tt
+            
+            status.result = result
+
             if status.solutions is None:
                 status.solutions = []
             status.solutions.append({
@@ -192,17 +306,6 @@ class Parse:
                 'time': [v['timestamp'], Parse.time_unit],
             })
 
-            if status.result in [rank3.SR_Accepted, rank3.SR_FirstBlood]:
-                continue
-
-
-            tt = v['timestamp'] * 1000 if Parse.time_unit == 's' else v['timestamp']
-            if result == rank3.SR_Accepted:
-                if frist_blood[v['problem_id']] == 0 or frist_blood[v['problem_id']] == tt:
-                    result = rank3.SR_FirstBlood
-                    frist_blood[v['problem_id']] = tt
-            
-            status.result = result
             if result not in [rank3.SR_FirstBlood, rank3.SR_Accepted, rank3.SR_Rejected, rank3.SR_Frozen]:
                 status.result = rank3.SR_Rejected
 
@@ -274,10 +377,19 @@ def call_rank(path: str, name: str):
     parse = Parse(config, teams, runs)
     contest = parse.contest()
     problems = parse.problems()
-    series = parse.series()
     marker = parse.markers()
-    rows = parse.rows()
-    r = rank3.Rank(contest, problems, series, rows, marker, contributors=['XCPCIO (https://xcpcio.com)', 'algoUX (https://algoux.org)'])
+    series = parse.series(marker)
+    rows = parse.rows(marker)
+    options = parse.options()
+    r = rank3.Rank(contest, 
+                   problems, 
+                   series['rows'], 
+                   rows, 
+                   marker, 
+                   contributors=['XCPCIO (https://xcpcio.com)', 'algoUX (https://algoux.org)'], 
+                   penaltyTimeCalculation = 's' if options else 'min',
+                   isRemarks = series['remarks'],
+                   )
     with open(name, 'w', encoding='utf-8') as file:
         json.dump(r.result(), file, ensure_ascii=False)
 
