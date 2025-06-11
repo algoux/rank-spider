@@ -122,7 +122,7 @@ class Marker:
 
 
 class User:
-    def __init__(self, name: str, id: str = None, organization: str = None, members: List[str] = None, official: bool = None, marker: Marker = None) -> None:
+    def __init__(self, name: str, id: str = None, organization: str = None, members: List[str] = None, official: bool = None, markers: List[Marker] = None) -> None:
         '''
             name: 用户名或队伍名
             id: 队伍 ID【可选】
@@ -143,8 +143,8 @@ class User:
             self.user['teamMembers'] = team
         if official is not None:
             self.user['official'] = official
-        if marker is not None:
-            self.user['marker'] = marker.marker['id']
+        if markers is not None and len(markers) > 0:
+            self.user['markers'] = [ m.marker['id'] for m in markers]
 
 
 class Status:
@@ -200,9 +200,8 @@ class Row:
 
 
 
-
 class Rank:
-    def __init__(self, contest: Contest, problems: List[Problem], series: List[Series], rows: List[Row], markers: List[Marker] = None, contributors: List[str] = None) -> None:
+    def __init__(self, contest: Contest, problems: List[Problem], series: List[Series], rows: List[Row], markers: List[Marker] = None, contributors: List[str] = None, penaltyTimeCalculation = 'min', isRemarks = False ) -> None:
         '''
             contest: 比赛基础信息
             problems: 题目列表
@@ -228,7 +227,8 @@ class Rank:
             for m in markers:
                 self.markers.append(m.marker)
         self.contributors = contributors
-        
+        self.penaltyTimeCalculation = penaltyTimeCalculation
+        self.isRemarks = isRemarks
         self.__check()
     
     def __check(self):
@@ -251,7 +251,7 @@ class Rank:
     def result(self) -> Dict[str, Any]:
         rank = {
             'type': 'general',
-            'version': '0.3.4',
+            'version': '0.3.7',
             'contest': self.contest,
             'problems': self.problems,
             'series': self.series,
@@ -268,16 +268,23 @@ class Rank:
                         None
                     ],
                     'penalty': [20, 'min'],
-                    "timePrecision": "min",
+                    "timePrecision": self.penaltyTimeCalculation,
                     "timeRounding": "floor"
                 }
             }
         }
+        if self.penaltyTimeCalculation == 's':
+            rank['sorter']['config']['rankingTimePrecision'] = 'min'
+            rank['sorter']['config']['rankingTimeRounding'] = 'floor'
         if self.markers is not None:
             rank['markers'] = self.markers
         if self.contributors is not None:
             rank['contributors'] = self.contributors
-        
+        if self.isRemarks:
+            rank['remarks'] = {
+            "zh-CN": "这个榜单缺失奖牌数据，如果您有该比赛的原始榜单或获奖名单，欢迎联系我们补充数据。",
+            "fallback": "This ranklist lacks medal data. If you have the original ranklist or the list of winners, please contact us to supplement the data."
+            }
         return rank
     
     def to_str(self, ensure_ascii=True) -> str:
