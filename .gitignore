@@ -1,4 +1,6 @@
 .DS_Store
+.idea
+node_modules
 */config.yml
 */config.yaml
 */*.db
