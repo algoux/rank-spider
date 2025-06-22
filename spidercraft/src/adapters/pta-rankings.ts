@@ -244,7 +244,7 @@ async function fetchRankData(cid: string) {
 
 export async function run(cid: string) {
   const { publicRanking, groups, teamSubmissionsMap } = await fetchRankData(cid);
-  const markerPresets = ['purple', 'blue', 'green', 'yellow', 'orange', 'red'];
+  const markerPresets = ['blue', 'green', 'yellow', 'orange', 'red', 'purple'];
   let usedMarkerPresetIndex = 0;
   const femaleMarkerFid = groups.find((group) => group.name === '女队')?.fid;
 
