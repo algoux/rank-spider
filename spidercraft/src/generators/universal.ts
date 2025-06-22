@@ -62,6 +62,14 @@ export interface SrkGeneratorInitOptions {
     mainRankSeriesRule?: srk.RankSeriesRulePresetICPC['options'];
 
     /**
+     * 指定不计算罚时的结果。
+     *
+     * @defaultValue Based on srk spec
+     * @reference srk.SorterICPC['config']['noPenaltyResults']
+     */
+    sorterNoPenaltyResults?: srk.SorterICPC['config']['noPenaltyResults'];
+
+    /**
      * 分数的总时间部分在累加计算时采用的时间精度。
      *
      * @defaultValue 不进行转换，而是取决于 rows 中提供的原始数据
@@ -228,7 +236,14 @@ export class UniversalSrkGenerator {
       this.srkObject.sorter = {
         algorithm: 'ICPC',
         config: {
-          noPenaltyResults: ['FB', 'AC', '?', 'CE', 'UKE', null],
+          noPenaltyResults: options.icpcPresetOptions?.sorterNoPenaltyResults ?? [
+            'FB',
+            'AC',
+            '?',
+            'CE',
+            'UKE',
+            null,
+          ],
           penalty: [20, 'min'],
           timePrecision: options.icpcPresetOptions?.sorterTimePrecision,
           timeRounding: options.icpcPresetOptions?.sorterTimeRounding,

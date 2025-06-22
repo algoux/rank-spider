@@ -5,9 +5,13 @@ import timezone from 'dayjs/plugin/timezone';
 import PQueue from 'p-queue';
 import pRetry from 'p-retry';
 import * as srk from '@algoux/standard-ranklist';
-import { numberToAlphabet } from '@algoux/standard-ranklist-utils';
 import { UniversalSrkGenerator } from '../generators/universal';
-import { stat } from 'fs';
+
+/**
+ * 坑：PTA 对于 OJ 内部系统错误（被转换为 UKE）的提交依然会计算罚时。
+ * 例子：https://pintia.cn/rankings/1919646713470414848，rk.2 L 题，2:39，ID 为 1921409787351285760 的提交被计算了罚时。
+ */
+const PTA_NO_PENALTY_RESULTS = ['CE', null];
 
 const req = Axios.create({
   baseURL: 'https://pintia.cn/api/competitions',
@@ -242,7 +246,7 @@ export async function run(cid: string) {
   const { publicRanking, groups, teamSubmissionsMap } = await fetchRankData(cid);
   const markerPresets = ['purple', 'blue', 'green', 'yellow', 'orange', 'red'];
   let usedMarkerPresetIndex = 0;
-  const femaleMarketFid = groups.find((group) => group.name === '女队')?.fid;
+  const femaleMarkerFid = groups.find((group) => group.name === '女队')?.fid;
 
   const ptaProblems: (PTAProblemInfo & { id: string })[] = [];
   const problemIdToIndexMap = new Map<string, number>();
@@ -271,7 +275,7 @@ export async function run(cid: string) {
     if (['正式', '正式队', '正式队伍', '打星', '打星队', '打星队伍'].includes(group.name)) {
       continue;
     }
-    if (group.name === '女队') {
+    if (group.fid === femaleMarkerFid) {
       markers.push({
         id: 'female',
         label: group.name,
@@ -283,6 +287,14 @@ export async function run(cid: string) {
         label: group.name,
         style: markerPresets[usedMarkerPresetIndex++] as srk.MarkerStylePreset,
       });
+    }
+  }
+  if (femaleMarkerFid) {
+    // 移动女队到最后
+    const femaleMarkerIndex = markers.findIndex((marker) => marker.id === 'female');
+    if (femaleMarkerIndex >= 0) {
+      const femaleMarker = markers.splice(femaleMarkerIndex, 1)[0];
+      markers.push(femaleMarker);
     }
   }
 
@@ -315,6 +327,7 @@ export async function run(cid: string) {
     contributors: ['algoUX (https://algoux.org)'],
     useICPCPreset: true,
     icpcPresetOptions: {
+      sorterNoPenaltyResults: ['FB', 'AC', '?', 'CE', null],
       mainRankSeriesRule: {
         ratio: {
           value: [0, 0, 0],
@@ -366,28 +379,37 @@ export async function run(cid: string) {
         }))
         .filter((solution) => solution.result !== null) as srk.Solution[];
 
-      let lastValidSubmissionIndex = solutions.length - 1;
-      while (
-        lastValidSubmissionIndex >= 0 &&
-        ['CE', 'UKE'].includes(solutions[lastValidSubmissionIndex].result)
-      ) {
-        lastValidSubmissionIndex--;
-      }
-      if (lastValidSubmissionIndex < 0) {
+      const formalSolutions = solutions.filter(
+        (solution) => !PTA_NO_PENALTY_RESULTS.includes(solution.result),
+      );
+      const lastFormalSolution = formalSolutions[formalSolutions.length - 1];
+      if (!lastFormalSolution) {
         statuses.push({
           result: null,
+          solutions,
         });
         continue;
       }
-      const result = solutions[lastValidSubmissionIndex].result;
-      // check
+      const result = lastFormalSolution.result;
+      const tries = formalSolutions.length;
+      // 数据合法性检查
       if (result === 'AC') {
-        const accurateTimeMin = Math.floor(solutions[lastValidSubmissionIndex].time[0] / 60);
+        const accurateTimeMin = Math.floor(lastFormalSolution.time[0] / 60);
         if (accurateTimeMin !== submissionSummary.acceptTime) {
           console.warn(
-            `Accurate time (in minutes) is not equal to submission summary accept time for team ${entry.teamFid} and problem ${ptaProblem.id}`,
+            `Accurate time (in minutes) is not equal to submission summary accept time for team ${entry.teamFid} (${entry.teamInfo.teamName}) and problem ${ptaProblem.label}, Out.`,
           );
         }
+      }
+      if (tries !== submissionSummary.validSubmitCount) {
+        // PTA 在很多情况下都有罚时数大于实际返回提交数的情况，只能检测出来并打印警告，数值还是得以 PTA 官方榜单为准。
+        // 以 https://pintia.cn/rankings/1919646713470414848 为例，
+        // 字节跳动 Seed 队有大量罚时和提交记录不匹配的情况，
+        // 如 G 题，13 tries 但只有一个提交。评价为 cy 等式：1=13。
+        // 理解，尊重，祝福，然后我出局。
+        console.warn(
+          `Tries (${tries}) is not equal to valid submit count (${submissionSummary.validSubmitCount}) for team ${entry.teamFid} (${entry.teamInfo.teamName}) and problem ${ptaProblem.label}, Out.`,
+        );
       }
       statuses.push({
         result:
@@ -399,15 +421,15 @@ export async function run(cid: string) {
             : result === '?'
             ? '?'
             : 'RJ',
-        tries: lastValidSubmissionIndex + 1,
-        time: result === 'AC' ? solutions[lastValidSubmissionIndex].time : undefined,
+        tries: submissionSummary.validSubmitCount,
+        time: result === 'AC' ? lastFormalSolution.time : undefined,
         solutions,
       });
     }
 
     const markers = entry.teamInfo.groupFids
       .map((fid) =>
-        fid === femaleMarketFid ? 'female' : groups.find((group) => group.fid === fid)?.fid,
+        fid === femaleMarkerFid ? 'female' : groups.find((group) => group.fid === fid)?.fid,
       )
       .filter(Boolean) as string[];
     const row: srk.RanklistRow = {
