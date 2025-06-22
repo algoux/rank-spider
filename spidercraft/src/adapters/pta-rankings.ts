@@ -268,7 +268,7 @@ export async function run(cid: string) {
   }));
   const markers: srk.Marker[] = [];
   for (const group of groups) {
-    if (['正式', '正式队', '正式队伍'].includes(group.name)) {
+    if (['正式', '正式队', '正式队伍', '打星', '打星队', '打星队伍'].includes(group.name)) {
       continue;
     }
     if (group.name === '女队') {
@@ -419,6 +419,7 @@ export async function run(cid: string) {
           name,
         })),
         markers: markers.length > 0 ? markers : undefined,
+        official: !entry.teamInfo.excluded,
       },
       score: {
         value: entry.solvedCount,
