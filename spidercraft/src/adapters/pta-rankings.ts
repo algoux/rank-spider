@@ -266,6 +266,25 @@ export async function run(cid: string) {
       submitted: problem.submitCount,
     },
   }));
+  const markers: srk.Marker[] = [];
+  for (const group of groups) {
+    if (['正式', '正式队', '正式队伍'].includes(group.name)) {
+      continue;
+    }
+    if (group.name === '女队') {
+      markers.push({
+        id: 'female',
+        label: group.name,
+        style: 'pink',
+      });
+    } else {
+      markers.push({
+        id: group.fid,
+        label: group.name,
+        style: markerPresets[usedMarkerPresetIndex++] as srk.MarkerStylePreset,
+      });
+    }
+  }
 
   const generator = new UniversalSrkGenerator();
   generator.init({
@@ -305,19 +324,12 @@ export async function run(cid: string) {
       sorterTimePrecision: 'min',
       sorterRankingTimePrecision: 'min',
     },
-    markers: groups.map((group) =>
-      group.name === '女队'
-        ? {
-            id: 'female',
-            label: group.name,
-            style: 'pink',
-          }
-        : {
-            id: group.fid,
-            label: group.name,
-            style: markerPresets[usedMarkerPresetIndex++] as srk.MarkerStylePreset,
-          },
-    ),
+    markers,
+    remarks: {
+      'zh-CN': '这个榜单缺失奖牌数据，如果您有该比赛的原始榜单或获奖名单，欢迎联系我们补充数据。',
+      fallback:
+        'This ranklist lacks medal data. If you have the original ranklist or the list of winners, please contact us to supplement the data.',
+    },
   });
   const rows = publicRanking.xcpcRankings.rankings.map((entry) => {
     const statuses: srk.RankProblemStatus[] = [];
