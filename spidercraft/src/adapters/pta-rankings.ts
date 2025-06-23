@@ -329,9 +329,8 @@ export async function run(cid: string) {
     icpcPresetOptions: {
       sorterNoPenaltyResults: ['FB', 'AC', '?', 'CE', null],
       mainRankSeriesRule: {
-        ratio: {
+        count: {
           value: [0, 0, 0],
-          denominator: 'scored',
         },
       },
       sorterTimePrecision: 'min',
@@ -392,8 +391,13 @@ export async function run(cid: string) {
       }
       const result = lastFormalSolution.result;
       const tries = formalSolutions.length;
+      const isAC = result === 'AC';
+      const isFB =
+        isAC &&
+        publicRanking.xcpcRankings.problemInfoByProblemSetProblemId[ptaProblem.id]
+          .firstAcceptTeamFid === entry.teamFid;
       // 数据合法性检查
-      if (result === 'AC') {
+      if (isAC) {
         const accurateTimeMin = Math.floor(lastFormalSolution.time[0] / 60);
         if (accurateTimeMin !== submissionSummary.acceptTime) {
           console.warn(
@@ -411,16 +415,11 @@ export async function run(cid: string) {
           `Tries (${tries}) is not equal to valid submit count (${submissionSummary.validSubmitCount}) for team ${entry.teamFid} (${entry.teamInfo.teamName}) and problem ${ptaProblem.label}, Out.`,
         );
       }
+      if (isFB) {
+        lastFormalSolution.result = 'FB';
+      }
       statuses.push({
-        result:
-          result === 'AC'
-            ? publicRanking.xcpcRankings.problemInfoByProblemSetProblemId[ptaProblem.id]
-                .firstAcceptTeamFid === entry.teamFid
-              ? 'FB'
-              : 'AC'
-            : result === '?'
-            ? '?'
-            : 'RJ',
+        result: isFB ? 'FB' : isAC ? 'AC' : 'RJ',
         tries: submissionSummary.validSubmitCount,
         time: result === 'AC' ? lastFormalSolution.time : undefined,
         solutions,
