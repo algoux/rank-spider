@@ -426,10 +426,8 @@ export async function run(cid: string) {
       });
     }
 
-    const markers = entry.teamInfo.groupFids
-      .map((fid) =>
-        fid === femaleMarkerFid ? 'female' : groups.find((group) => group.fid === fid)?.fid,
-      )
+    const userMarkers = entry.teamInfo.groupFids
+      .map((fid) => (fid === femaleMarkerFid ? 'female' : markers.find((m) => m.id === fid)?.id))
       .filter(Boolean) as string[];
     const row: srk.RanklistRow = {
       user: {
@@ -439,7 +437,7 @@ export async function run(cid: string) {
         teamMembers: entry.teamInfo.memberNames.map((name) => ({
           name,
         })),
-        markers: markers.length > 0 ? markers : undefined,
+        markers: userMarkers.length > 0 ? userMarkers : undefined,
         official: !entry.teamInfo.excluded,
       },
       score: {
