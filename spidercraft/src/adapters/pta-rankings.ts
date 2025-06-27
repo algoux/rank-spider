@@ -7,6 +7,8 @@ import pRetry from 'p-retry';
 import * as srk from '@algoux/standard-ranklist';
 import { UniversalSrkGenerator } from '../generators/universal';
 
+// 用于爬取新版 PTA rankings 类型的榜单（https://pintia.cn/rankings/）
+
 /**
  * 坑：PTA 对于 OJ 内部系统错误（被转换为 UKE）的提交依然会计算罚时。
  * 例子：https://pintia.cn/rankings/1919646713470414848，rk.2 L 题，2:39，ID 为 1921409787351285760 的提交被计算了罚时。
