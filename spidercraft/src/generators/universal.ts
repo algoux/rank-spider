@@ -1,6 +1,7 @@
 import type * as srk from '@algoux/standard-ranklist';
 import {
   CalculatedSolutionTetrad,
+  calculateProblemStatistics,
   formatTimeDuration,
   getSortedCalculatedRawSolutions,
   regenerateRanklistBySolutions,
@@ -300,7 +301,7 @@ export class UniversalSrkGenerator {
    *
    * 这将会计算最终的 srk（如有提供 `solutions`，将计算排名并排序），并对 srk 中的计算属性进行下列完整性补充：
    * - `problems` 中的 statistics 数据
-   * - 题目的 FB
+   * - 题目的 FB（仅当启用计算且数据中没有指定任何 FB 时）
    * @param options 构建选项
    */
   public build(options: SrkGeneratorBuildOptions = {}): void {
@@ -309,8 +310,10 @@ export class UniversalSrkGenerator {
         'Invalid srk: contest and problems must be initialized before building srk object',
       );
     }
+    let sourceMode: 'solutions' | 'rows' = 'rows';
     let solutions: CalculatedSolutionTetrad[];
     if (this.solutions && this.members) {
+      sourceMode = 'solutions';
       // 如果提供了 solutions 和 members，则使用它们来计算生成 rows
       // 预检查 solutions 合法性
       let lastSolutionTime = -1;
@@ -349,7 +352,11 @@ export class UniversalSrkGenerator {
         })),
       }));
     } else if (this.srkObject.rows) {
-      // 从 rows 中提取 solutions
+      const problemStatistics = calculateProblemStatistics(this.srkObject);
+      this.srkObject.problems.forEach((problem, index) => {
+        problem.statistics = problemStatistics[index];
+      });
+      // 从 rows 中提取 solutions（如果不包含 statuses[].solutions[] 则不完整，会缺失未 AC 题目的那些提交）
       solutions = getSortedCalculatedRawSolutions(this.srkObject.rows);
     } else {
       throw new Error(
@@ -360,12 +367,15 @@ export class UniversalSrkGenerator {
     if (options.calculateFB) {
       let disableFBCalc = false;
       const problemFBSolutionIndexMap = new Map<number, number>();
+      const fbSolutionIndexes: number[] = [];
+
       solutions.forEach((solution, index) => {
         const [_, problemIndex, result] = solution;
         if (result === 'FB') {
           if (problemIndex < 0) {
             throw new Error(`Invalid FB solution: solution [${solution}] is invalid`);
           }
+          fbSolutionIndexes.push(index);
           if (!problemFBSolutionIndexMap.has(problemIndex)) {
             problemFBSolutionIndexMap.set(problemIndex, index);
           } else if (options.disableFBIfConflict) {
@@ -373,9 +383,9 @@ export class UniversalSrkGenerator {
           }
         }
       });
-      const fbSolutionIndexes: number[] = [];
+      
       if (problemFBSolutionIndexMap.size === 0) {
-        // 尝试计算 FB
+        // 当数据中没有指定任何 FB 时，尝试计算 FB
         const userIdMap = new Map<string, srk.User>();
         this.srkObject.rows.forEach((row) => {
           userIdMap.set(row.user.id, row.user);
@@ -413,16 +423,41 @@ export class UniversalSrkGenerator {
           }
         });
       }
+
       if (!disableFBCalc) {
         fbSolutionIndexes.forEach((fbSolutionIndex) => {
           solutions[fbSolutionIndex][2] = 'FB';
+          if (sourceMode === 'rows') {
+            const [userId, problemIndex] = solutions[fbSolutionIndex];
+            const row = this.srkObject.rows.find((row) => row.user.id === userId)!;
+            const status = row.statuses[problemIndex];
+            if (status.result !== 'AC' && status.result !== 'FB') {
+              throw new Error(
+                `Invalid FB solution: solution [${solutions[fbSolutionIndex]}] is invalid`,
+              );
+            }
+            status.result = 'FB';
+            if (status.solutions && status.solutions.length > 0) {
+              const acSolution = status.solutions.find(
+                (solution) => solution.result === 'AC' || solution.result === 'FB',
+              );
+              if (!acSolution) {
+                throw new Error(
+                  `Invalid FB solution: solution [${solutions[fbSolutionIndex]}] is invalid`,
+                );
+              }
+              acSolution.result = 'FB';
+            }
+          }
         });
       } else {
         console.warn('FB calculation is disabled due to conflict: multiple solutions are FB');
       }
     }
 
-    this.srkObject = regenerateRanklistBySolutions(this.srkObject, solutions);
+    if (sourceMode === 'solutions') {
+      this.srkObject = regenerateRanklistBySolutions(this.srkObject, solutions);
+    }
   }
 
   public getSrk(): srk.Ranklist {

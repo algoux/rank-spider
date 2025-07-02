@@ -13,9 +13,8 @@ export async function run(html: string) {
       .match(/background:\s*([^;]+)/)![1]
       .toString(),
   );
-  const problenNum = problemBgColors.length;
-  const trs = $('table>tbody>tr');
-  const bdTrs = Array.from(trs).splice(0, trs.length - 6);
+  const trs = $('table.scoreboard:first-of-type >tbody>tr');
+  const bdTrs = Array.from(trs).splice(0, trs.length - 1);
   const rows: srk.RanklistRow[] = [];
   for (const tr of bdTrs) {
     const userId = $(tr)
@@ -72,7 +71,7 @@ export async function run(html: string) {
         'zh-CN': contestTitle,
         fallback: contestTitle,
       },
-      startAt: '2000-01-01T00:00:00Z',
+      startAt: '2000-01-01T00:00:00+08:00',
       duration: [5, 'h'],
       frozenDuration: [1, 'h'],
     },
@@ -91,6 +90,11 @@ export async function run(html: string) {
         },
       },
       sorterTimePrecision: 'min',
+    },
+    remarks: {
+      'zh-CN': '这个榜单缺失奖牌数据，如果您有该比赛的原始榜单或获奖名单，欢迎联系我们补充数据。',
+      fallback:
+        'This ranklist lacks medal data. If you have the original ranklist or the list of winners, please contact us to supplement the data.',
     },
   });
 

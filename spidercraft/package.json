@@ -10,7 +10,7 @@
   "author": "bLue",
   "license": "ISC",
   "dependencies": {
-    "@algoux/standard-ranklist-utils": "^0.2.5",
+    "@algoux/standard-ranklist-utils": "^0.2.9",
     "axios": "^0.26.1",
     "cheerio": "^0.22.0",
     "commander": "^11.1.0",
