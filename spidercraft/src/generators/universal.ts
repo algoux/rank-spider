@@ -310,43 +310,52 @@ export class UniversalSrkGenerator {
       );
     }
     let solutions: CalculatedSolutionTetrad[];
-    if (!(this.solutions && this.members)) {
-      return;
+    if (this.solutions && this.members) {
+      // 如果提供了 solutions 和 members，则使用它们来计算生成 rows
+      // 预检查 solutions 合法性
+      let lastSolutionTime = -1;
+      this.solutions.forEach((solution) => {
+        const time = formatTimeDuration(solution.time);
+        if (typeof time !== 'number' || time < 0 || time < lastSolutionTime) {
+          throw new Error(
+            `Invalid solution: solution ${JSON.stringify(solution)} has invalid time`,
+          );
+        }
+        lastSolutionTime = time;
+      });
+      // 生成空 rows
+      const problemAliasToIndexMap = new Map<string, number>();
+      this.srkObject.problems.forEach((problem, index) => {
+        if (problem.alias) {
+          problemAliasToIndexMap.set(problem.alias, index);
+        }
+      });
+      solutions = this.solutions.map((solution) => [
+        solution.userId,
+        typeof solution.problemIndexOrAlias === 'string'
+          ? problemAliasToIndexMap.get(solution.problemIndexOrAlias) ?? -1
+          : solution.problemIndexOrAlias,
+        solution.result,
+        solution.time,
+      ]);
+      this.srkObject.rows = this.members.map((member) => ({
+        user: member,
+        score: {
+          value: 0,
+          time: [0, 'ms'],
+        },
+        statuses: this.srkObject.problems.map(() => ({
+          result: null,
+        })),
+      }));
+    } else if (this.srkObject.rows) {
+      // 从 rows 中提取 solutions
+      solutions = getSortedCalculatedRawSolutions(this.srkObject.rows);
+    } else {
+      throw new Error(
+        'Invalid srk: rows or (solutions and members) must be set before building srk object',
+      );
     }
-    // 预检查 solutions 合法性
-    let lastSolutionTime = -1;
-    this.solutions.forEach((solution) => {
-      const time = formatTimeDuration(solution.time);
-      if (typeof time !== 'number' || time < 0 || time < lastSolutionTime) {
-        throw new Error(`Invalid solution: solution ${JSON.stringify(solution)} has invalid time`);
-      }
-      lastSolutionTime = time;
-    });
-    // 生成空 rows
-    const problemAliasToIndexMap = new Map<string, number>();
-    this.srkObject.problems.forEach((problem, index) => {
-      if (problem.alias) {
-        problemAliasToIndexMap.set(problem.alias, index);
-      }
-    });
-    solutions = this.solutions.map((solution) => [
-      solution.userId,
-      typeof solution.problemIndexOrAlias === 'string'
-        ? problemAliasToIndexMap.get(solution.problemIndexOrAlias) ?? -1
-        : solution.problemIndexOrAlias,
-      solution.result,
-      solution.time,
-    ]);
-    this.srkObject.rows = this.members.map((member) => ({
-      user: member,
-      score: {
-        value: 0,
-        time: [0, 'ms'],
-      },
-      statuses: this.srkObject.problems.map(() => ({
-        result: null,
-      })),
-    }));
 
     if (options.calculateFB) {
       let disableFBCalc = false;
@@ -368,8 +377,8 @@ export class UniversalSrkGenerator {
       if (problemFBSolutionIndexMap.size === 0) {
         // 尝试计算 FB
         const userIdMap = new Map<string, srk.User>();
-        this.members.forEach((member) => {
-          userIdMap.set(member.id, member);
+        this.srkObject.rows.forEach((row) => {
+          userIdMap.set(row.user.id, row.user);
         });
         solutions.forEach((solution, index) => {
           const [userId, problemIndex, result, time] = solution;
