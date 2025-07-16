@@ -241,6 +241,7 @@ export class UniversalSrkGenerator {
             'FB',
             'AC',
             '?',
+            'NOUT',
             'CE',
             'UKE',
             null,
