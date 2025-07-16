@@ -5,13 +5,11 @@
 ## 环境准备
 
 - Node.js 18+（推荐使用 [fnm](https://github.com/Schniz/fnm) 并开启 `--use-on-cd` 来自动切换 Node 环境）
-- [pnpm](https://pnpm.io/installation)
-
 
 ## 安装依赖
 
 ```bash
-pnpm i
+npm i
 ```
 
 ## 使用
