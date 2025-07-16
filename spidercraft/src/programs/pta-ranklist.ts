@@ -1,5 +1,7 @@
 #!/usr/bin/env -S npx tsx
 
+// 用于爬取 PTA 传统榜单（例如：http://ccpc.pintia.cn/nmg/）
+
 import path from 'path';
 import fs from 'fs-extra';
 import { program } from 'commander';

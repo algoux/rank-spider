@@ -1,5 +1,7 @@
 #!/usr/bin/env -S npx tsx
 
+// 用于爬取新版 PTA rankings 类型的榜单（https://pintia.cn/rankings/）
+
 import path from 'path';
 import fs from 'fs-extra';
 import { program } from 'commander';

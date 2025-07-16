@@ -1,5 +1,7 @@
 #!/usr/bin/env -S npx tsx
 
+// 实验性的爬虫，用于爬取 PTA 后台导出的成绩表 Excel
+
 import path from 'path';
 import fs from 'fs-extra';
 import { program } from 'commander';
