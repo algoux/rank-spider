@@ -9,7 +9,7 @@ program
   .name('cf-gym.ts')
   .argument('<cid>', 'Codeforces Gym 比赛 ID')
   .option('-o, --output <file>', '输出文件路径', 'out.srk.json')
-  .option('-c, --cookie <file>', 'Cookie 文件路径')
+  .option('-c, --cookie <file>', 'Cookie 文件路径（可解决部分 403 问题）')
   .action(async (cid: string, options: { output: string; cookie?: string }) => {
     try {
       let cookieContent: string | undefined;
