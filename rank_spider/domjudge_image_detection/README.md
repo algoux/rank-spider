@@ -1,6 +1,6 @@
 # domjudge_image_detection
 
-从 DOMJudge 榜单截图中提取数据并转换到 srk。
+从 DOMjudge 榜单截图中提取数据并转换到 srk。
 
 ## 环境要求
 
