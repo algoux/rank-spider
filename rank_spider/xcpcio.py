@@ -149,16 +149,19 @@ def main():
     icpc = {}
     for k, v in url['icpc'].items():
         for vk, vv in v.items():
-            icpc[k+vk] = vv['board_link']
+            if 'board_link' in vv:
+                icpc[k+vk] = vv['board_link']
 
     ccpc = {}
     for k, v in url['ccpc'].items():
         for vk, vv in v.items():
-            ccpc[k+vk] = vv['board_link']
+            if 'board_link' in vv:
+                ccpc[k+vv] = vv['board_link']
     province = {}
     for k, v in url['provincial-contest'].items():
         for vk, vv in v.items():
-            province[k+vk] = vv['board_link']
+            if 'board_link' in vv:
+                province[k+vk] = vv['board_link']
         
     icpc.pop('2018world-finals')
     icpc.pop('2019world-finals')

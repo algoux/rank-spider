@@ -2,6 +2,7 @@ import json
 import requests
 import rank3
 import re
+import os
 from typing import Dict, List, Union
 
 
@@ -156,12 +157,14 @@ class Parse:
                                 break
                         if title is None:
                             continue
-                        anotherSeries.append(rank3.Series(title=title, segments=[('金奖', rank3.Style_Gold), ('银奖', rank3.Style_Silver), ('铜奖', rank3.Style_Bronze)], rule={
+                        rule = {
                             "preset": "ICPC",
                             "options": {
-                                "count": {"value": [value['gold'], value['silver'], value['bronze']]}
+                                "count": {"value": [value['gold'], value['silver'], value['bronze']]},
+                                "filter": {"byMarker": key}
                             }
-                        }))
+                        }
+                        anotherSeries.append(rank3.Series(title=title, segments=[('金奖', rank3.Style_Gold), ('银奖', rank3.Style_Silver), ('铜奖', rank3.Style_Bronze)], rule=rule))
                     else:
                         continue
 
@@ -178,24 +181,28 @@ class Parse:
         }
 
     def markers(self) -> List[rank3.Marker]:
-        markers = []
-        colors = ['purple', 'blue', 'green', 'yellow', 'orange', 'red']
+        all_markers = []
+        colors = [ 'blue', 'green', 'yellow', 'orange', 'red', 'purple']
         index = 0
         femalePattern = r'女队'
         starPattern = r'打星'
         for key, value in self.group.items():
-            if re.search(femalePattern, value):
-                markers.append(rank3.Marker('female', value, 'pink'))
-                continue
             if key == 'unofficial':
                 continue
             if key == 'official':
                 continue
             if re.search(starPattern, value):
                 continue
-            markers.append(rank3.Marker(key,value, colors[index % len(colors)]))
-            index += 1
-        return markers
+            is_female = re.search(femalePattern, value) or (isinstance(key, str) and 'female' in key)
+            style = 'pink' if is_female else colors[index % len(colors)]
+            marker = rank3.Marker(key, value, style)
+            all_markers.append(marker)
+            if not is_female:
+                index += 1
+        # 拆分女队相关和普通 marker
+        female_markers = [m for m in all_markers if ('female' in str(m.marker['id']).lower() or re.search(femalePattern, str(m.marker['label'])))]
+        normal_markers = [m for m in all_markers if m not in female_markers]
+        return normal_markers + female_markers
 
     def rows(self, markers) -> List[rank3.Row]:
         data = []
@@ -216,19 +223,30 @@ class Parse:
 
             official = original_official  or explicit_official or not explicit_unofficial
 
-            # 判断是否为女队的逻辑
-            original_girl = v.get('girl') == 1
-            group_girl = 'girl' in group
-            is_girl_team = original_girl or group_girl
-            if is_girl_team:
-                u_markers.append(rank3.Marker('female', '女队', 'pink'))
-            # 判断为是否为其他队伍的逻辑
+            # group字段内的marker，只添加 markers 里存在的 id
             for t in group:
                 if t is not None and t != 'official' and t != 'unofficial' and t != 'girl':
                     for m in markers:
-                        if m.marker['id'] == t:
+                        if m.marker['id'] == t and m not in u_markers:
                             u_markers.append(m)
-            
+            # 检查group外层对象属性是否与markers重合
+            for m in markers:
+                if m.marker['id'] in v and m not in u_markers:
+                    u_markers.append(m)
+
+            # 判断是否为女队的逻辑（只要 markers 里有女队相关 marker 且 user 是女队且未加过就加）
+            original_girl = v.get('girl') == 1
+            group_girl = 'girl' in group
+            is_girl_team = original_girl or group_girl
+            # 女队相关 marker: id 含 female/girl 或 label 含“女队”
+            female_markers = [m for m in markers if ('female' in str(m.marker['id']).lower() or 'girl' in str(m.marker['id']).lower() or '女队' in str(m.marker['label']))]
+            # 检查当前 user 是否已加过女队相关 marker
+            has_any_female_marker = any(m in u_markers for m in female_markers)
+            if is_girl_team and not has_any_female_marker:
+                for m in female_markers:
+                    if m not in u_markers:
+                        u_markers.append(m)
+
             members = None
             if v.get('members', None) is not None:
                 members =  [x for x in v['members'] if x is not None and str(x).lower() != 'null']
@@ -362,6 +380,16 @@ def call_rank(path: str, name: str):
     teams = get(f'https://board.xcpcio.com/data{path}/team.json')
     runs = get(f'https://board.xcpcio.com/data{path}/run.json')
 
+    if config is None:
+        print(f"{path} 获取 config.json 失败")
+        return
+    if teams is None:
+        print(f"{path} 获取 team.json 失败")
+        return
+    if runs is None:
+        print(f"{path} 获取 run.json 失败")
+        return
+
     set_contest_url(path, config)
     runs.sort(key=lambda x: x['timestamp'])
     if len(runs) == 0:
@@ -390,6 +418,7 @@ def call_rank(path: str, name: str):
                    penaltyTimeCalculation = 's' if options else 'min',
                    isRemarks = series['remarks'],
                    )
+    os.makedirs(os.path.dirname(name), exist_ok=True)
     with open(name, 'w', encoding='utf-8') as file:
         json.dump(r.result(), file, ensure_ascii=False)
 

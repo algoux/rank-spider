@@ -215,9 +215,24 @@ class Rank:
         for p in problems:
             self.problems.append(p.problem)
         
-        self.series = []
-        for s in series:
-            self.series.append(s.series)
+        # 自动隐藏主 # 列逻辑：
+        # 只有当分组 series 的 id 在 markers 里出现，并且分组 series 有奖牌（segments）时，才隐藏 # 列
+        _series = [s.series if hasattr(s, 'series') else s for s in series]
+        marker_ids = set()
+        if markers is not None:
+            for m in markers:
+                marker_ids.add(m.marker['id'])
+        # 只统计 title 在 markers 里的分组（不含 R# S#），且数量大于1才删 #
+        group_series = [s for s in _series if isinstance(s.get('title', None), str) and s['title'] not in ['#', 'R#', 'S#'] and s['title'].endswith('#')]
+        # 统计 title 去掉 # 后是否在 marker label 里
+        marker_labels = set()
+        if markers is not None:
+            for m in markers:
+                marker_labels.add(m.marker['label'])
+        valid_group_series = [s for s in group_series if s['title'][:-1] in marker_labels]
+        if len(valid_group_series) > 1:
+            _series = [s for s in _series if s.get('title', None) != '#']
+        self.series = _series
         
         self.rows = rows
 
@@ -251,7 +266,7 @@ class Rank:
     def result(self) -> Dict[str, Any]:
         rank = {
             'type': 'general',
-            'version': '0.3.7',
+            'version': '0.3.9',
             'contest': self.contest,
             'problems': self.problems,
             'series': self.series,
