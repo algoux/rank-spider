@@ -3,16 +3,44 @@ import cheerio from 'cheerio';
 import { numberToAlphabet } from '@algoux/standard-ranklist-utils';
 import { UniversalSrkGenerator } from '../generators/universal';
 
-export async function run(html: string) {
+export async function run(
+  html: string,
+  userParser?: (
+    id: string,
+    name: string,
+    organization: string,
+    categories: string[],
+    location?: string,
+    photoUrl?: string,
+  ) => srk.User,
+) {
   const $ = cheerio.load(html);
   const contestTitle = $('.card-header>span').eq(0).text().trim();
-  const problemHeaders = Array.from($('table>thead>tr.scoreheader>th[title~=problem] .circle'));
-  const problemBgColors = problemHeaders.map((ph) =>
-    $(ph)
-      .attr('style')!
-      .match(/background:\s*([^;]+)/)![1]
-      .toString(),
-  );
+  // problems
+  let problemHeaders = Array.from($('table>thead>tr.scoreheader>th[title~=problem] .circle'));
+  if (problemHeaders.length === 0) {
+    problemHeaders = Array.from($('table>thead>tr.scoreheader>th[title~=problem] .badge'));
+  }
+  if (problemHeaders.length === 0) {
+    console.warn('Cannot find problem headers');
+  }
+  const problemBgColors = problemHeaders.map((ph) => {
+    const style = $(ph).attr('style');
+    const match =
+      style?.match(/background:\s*([^;]+)/) || style?.match(/background-color:\s*([^;]+)/);
+    return match ? match[1].toString().trim() : '';
+  });
+  // categories
+  const categoriesTrs = Array.from($('#categ_legend tbody>tr'));
+  const categoryClassToNameMap: Record<string, string> = {};
+  categoriesTrs.forEach((catTr) => {
+    const className = $(catTr).attr('class')?.trim();
+    const categoryName = $(catTr).text().trim();
+    if (className) {
+      categoryClassToNameMap[className] = categoryName;
+    }
+  });
+
   const trs = $('table.scoreboard:first-of-type >tbody>tr');
   const bdTrs = Array.from(trs).splice(0, trs.length - 1);
   const rows: srk.RanklistRow[] = [];
@@ -22,9 +50,27 @@ export async function run(html: string) {
       .trim()
       .replace(/^team:/, '');
     const tds = Array.from($(tr).find('td'));
-    const [rankTd, _, nameTd, scoreTd, totalTimeTd, ...problemTds] = tds;
+    // 忽略 rank、country、logo 列
+    let tdStartIndex = 0;
+    while (tdStartIndex < tds.length) {
+      if ($(tds[tdStartIndex]).hasClass('scoretn')) {
+        break;
+      }
+      tdStartIndex++;
+    }
+    const [nameTd, scoreTd, totalTimeTd, ...problemTds] = tds.slice(tdStartIndex);
     const name = $(nameTd).attr('title')!.trim();
     const organization = $(nameTd).find('.univ').text().trim();
+    const nameTdClassNames = ($(nameTd).attr('class') || '').split(' ').filter(Boolean);
+    const categories = nameTdClassNames.map((cn) => categoryClassToNameMap[cn]).filter(Boolean);
+    const photoUrl = $(`#team-modal-${userId} img.teampicture`).attr('src');
+    const modalTableRows = Array.from($(`#team-modal-${userId} .modal-body table>tbody>tr`));
+    const locationTr = modalTableRows.find((tr) => {
+      const thText = $(tr).find('th').text().trim();
+      return thText === 'Location';
+    });
+    const location = locationTr ? $(locationTr).find('td').text().trim() : undefined;
+
     const score: srk.RankScore = {
       value: parseInt($(scoreTd).text().trim()),
       time: [parseInt($(totalTimeTd).text().trim()), 'min'],
@@ -51,13 +97,16 @@ export async function run(html: string) {
         tries: parseInt(tries),
       } as srk.RankProblemStatus);
     }
+
     rows.push({
-      user: {
-        id: userId,
-        name,
-        organization,
-        official: true,
-      },
+      user: userParser
+        ? userParser(userId, name, organization, categories, location, photoUrl)
+        : {
+            id: userId,
+            name,
+            organization,
+            official: true,
+          },
       score,
       statuses,
     });
@@ -77,9 +126,11 @@ export async function run(html: string) {
     },
     problems: problemBgColors.map((problemBg, index) => ({
       alias: numberToAlphabet(index),
-      style: {
-        backgroundColor: problemBg,
-      },
+      style: problemBg
+        ? {
+            backgroundColor: problemBg,
+          }
+        : undefined,
     })),
     contributors: ['algoUX (https://algoux.org)'],
     useICPCPreset: true,
