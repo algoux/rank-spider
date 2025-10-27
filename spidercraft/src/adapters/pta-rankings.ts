@@ -50,6 +50,7 @@ export interface PTAUserProblemSubmissionSummary {
   validSubmitCount: number; // 有效提交数
   submitCountSnapshot: number; // 提交数快照（封榜前提交数）
   acceptTime: number; // AC 时间，单位分钟
+  lastSubmitAt: number; // 最后提交时间，单位分钟
 }
 
 // 题目信息接口
@@ -69,7 +70,8 @@ export interface PTARankingEntry {
   solvingTime: number; // 包含罚时的计算好的总时间，单位分钟
   solvedCount: number; // 解题数
   schoolRank: number; // 学校排名，打星为 0
-  problemSubmissionDetailsByProblemSetProblemId: Record<string, PTAUserProblemSubmissionSummary>;
+  // problemSubmissionDetailsByProblemSetProblemId: Record<string, PTAUserProblemSubmissionSummary>;
+  detailsByProblemSetProblemId: Record</** problem id */ string, PTAUserProblemSubmissionSummary>;
   competitionId: string; // 竞赛 ID
   teamInfo: PTATeamInfo; // 队伍信息
   teamFid: string; // 队伍 ID
@@ -349,7 +351,7 @@ export async function run(cid: string) {
     const statuses: srk.RankProblemStatus[] = [];
     const submissions = teamSubmissionsMap.get(entry.teamFid)?.submissions;
     for (const ptaProblem of ptaProblems) {
-      const submissionSummary = entry.problemSubmissionDetailsByProblemSetProblemId[ptaProblem.id];
+      const submissionSummary = entry.detailsByProblemSetProblemId[ptaProblem.id];
       if (!submissionSummary || submissionSummary.validSubmitCount === 0) {
         statuses.push({
           result: null,
