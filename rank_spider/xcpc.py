@@ -72,10 +72,50 @@ class Parse:
         self.config = config
         self.teams = teams
         self.runs = runs
-        self.num_problems = len(config['problem_id'])
+        
+        # 兼容不同的配置格式：优先使用 problem_id 数组，否则从 problems 对象数组提取
+        if 'problem_id' in config:
+            self.problem_id_list = config['problem_id']
+        elif 'problems' in config and isinstance(config['problems'], list):
+            # 从 problems 数组提取 id 或 label 作为 problem_id
+            self.problem_id_list = []
+            for prob in config['problems']:
+                if isinstance(prob, dict):
+                    # 优先使用 label，其次使用 id
+                    if 'label' in prob:
+                        self.problem_id_list.append(prob['label'])
+                    elif 'id' in prob:
+                        self.problem_id_list.append(prob['id'])
+            if not self.problem_id_list:
+                raise ValueError("config 中的 problems 数组为空或格式不正确")
+        else:
+            raise KeyError("config 中既没有 problem_id 数组也没有 problems 数组")
+        
+        self.num_problems = len(self.problem_id_list)
+        
+        # 建立 problem_id 映射：支持数字和字符串两种格式的 problem_id
+        # 用于将 runs 中的 problem_id (可能是数字) 映射到索引
+        self.problem_id_map = {}
+        if 'problems' in config and isinstance(config['problems'], list):
+            for idx, prob in enumerate(config['problems']):
+                if isinstance(prob, dict) and 'id' in prob:
+                    # 映射字符串形式的 id
+                    self.problem_id_map[prob['id']] = idx
+                    # 如果 id 是数字字符串，也映射数字形式
+                    try:
+                        num_id = int(prob['id'])
+                        self.problem_id_map[num_id] = idx
+                    except (ValueError, TypeError):
+                        pass
+        
+        # 如果没有 problems 数组，使用默认的索引映射
+        if not self.problem_id_map:
+            for idx, pid in enumerate(self.problem_id_list):
+                self.problem_id_map[pid] = idx
+                self.problem_id_map[idx] = idx
+        
         self.group = config.get('group', {})
-
-        self.statistics = [[0, 0] for i in self.config['problem_id']]
+        self.statistics = [[0, 0] for i in self.problem_id_list]
         self.statuses = {}
         self.__calculate()
 
@@ -122,7 +162,7 @@ class Parse:
     def problems(self) -> List[rank3.Problem]:
         problems = []
         f = 1
-        for i, v in enumerate(self.config['problem_id']):
+        for i, v in enumerate(self.problem_id_list):
             style = None
             if self.config.get('balloon_color') is not None:
                 color = self.config['balloon_color'][i]
@@ -131,7 +171,7 @@ class Parse:
                     f = 0
                     break
 
-        for i, v in enumerate(self.config['problem_id']):
+        for i, v in enumerate(self.problem_id_list):
             style = None
             if self.config.get('balloon_color') is not None:
                 color = self.config['balloon_color'][i]
@@ -426,13 +466,25 @@ class Parse:
     
     def __calculate(self) -> None:
 
-        first_blood = [0 for i in self.config['problem_id']]
+        first_blood = [0 for i in self.problem_id_list]
 
         for v in self.runs:
+            # 将 runs 中的 problem_id 映射到索引
+            raw_problem_id = v['problem_id']
+            problem_idx = self.problem_id_map.get(raw_problem_id)
+            
+            # 如果映射失败，跳过此记录
+            if problem_idx is None:
+                url = contest_url.get(self.config.get("contest_name"))
+                unkown = unkown_contest.setdefault(url,
+                                                   {'name': self.config.get("contest_name"), 'status': set(), 'count': 0})
+                unkown['status'].add(f"unknown_problem_id:{raw_problem_id}")
+                unkown['count'] += 1
+                continue
 
             if self.statuses.get(str(v['team_id'])) is None:
-                self.statuses[str(v['team_id'])] = [rank3.Status() for i in self.config['problem_id']]
-            status = self.statuses[str(v['team_id'])][v['problem_id']]
+                self.statuses[str(v['team_id'])] = [rank3.Status() for i in self.problem_id_list]
+            status = self.statuses[str(v['team_id'])][problem_idx]
 
             result = sr_results.get(v['status'].upper())
             if result is None:
@@ -449,9 +501,9 @@ class Parse:
 
             tt = v['timestamp'] * 1000 if Parse.time_unit == 's' else v['timestamp']
             if result == rank3.SR_Accepted:
-                if first_blood[v['problem_id']] == 0 or first_blood[v['problem_id']] == tt:
+                if first_blood[problem_idx] == 0 or first_blood[problem_idx] == tt:
                     result = rank3.SR_FirstBlood
-                    first_blood[v['problem_id']] = tt
+                    first_blood[problem_idx] = tt
             
             status.result = result
 
@@ -472,11 +524,11 @@ class Parse:
             if result not in [rank3.SR_CompilationError, rank3.SR_PresentationError, rank3.SR_UnknownError]:
                 status.tries += 1
 
-            self.statuses[str(v['team_id'])][v['problem_id']] = status
+            self.statuses[str(v['team_id'])][problem_idx] = status
 
             if result == rank3.SR_Accepted or result == rank3.SR_FirstBlood :
-                self.statistics[v['problem_id']][0] += 1
-            self.statistics[v['problem_id']][1] += 1
+                self.statistics[problem_idx][0] += 1
+            self.statistics[problem_idx][1] += 1
 
 
 def main():
