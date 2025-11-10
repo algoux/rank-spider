@@ -31,8 +31,37 @@ class Parse:
         self.__calculate()
 
     def contest(self) -> rank.Contest:
-        duration = (self.config['end_time'] - self.config['start_time']) / 3600
-        return rank.Contest(self.config['contest_name'], self.config['start_time'], duration, self.config['frozen_time'] / 3600)
+        start_time = self.config.get('start_time')
+        end_time = self.config.get('end_time')
+        frozen_time = self.config.get('frozen_time', 0)
+
+        # 兼容毫秒级或秒级时间戳
+        if start_time is not None and start_time > 946684800000:
+            start_time = start_time // 1000
+        if end_time is not None and end_time > 946684800000:
+            end_time = end_time // 1000
+
+        duration = (end_time - start_time) / 3600
+
+        # 处理 frozen_time：同 xcpc.py 的策略
+        frozen_hours = 0
+        try:
+            if frozen_time is None:
+                frozen_hours = 0
+            elif isinstance(frozen_time, (int, float)) and frozen_time > 946684800000:
+                frozen_ts = int(frozen_time) // 1000
+                frozen_hours = (end_time - frozen_ts) / 3600
+            elif isinstance(frozen_time, (int, float)) and frozen_time > 1000:
+                frozen_hours = float(frozen_time) / 1000.0 / 3600.0
+            else:
+                if isinstance(frozen_time, (int, float)) and frozen_time > 3600:
+                    frozen_hours = float(frozen_time) / 3600.0
+                else:
+                    frozen_hours = float(frozen_time)
+        except Exception:
+            frozen_hours = 0
+
+        return rank.Contest(self.config['contest_name'], start_time, duration, frozen_hours)
 
     def problems(self) -> List[rank.Problem]:
         problems = []

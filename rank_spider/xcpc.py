@@ -80,8 +80,44 @@ class Parse:
         self.__calculate()
 
     def contest(self) -> rank3.Contest:
-        duration = (self.config['end_time'] - self.config['start_time']) / 3600
-        return rank3.Contest(self.config['contest_name'], self.config['start_time'], duration, self.config['frozen_time'] / 3600)
+        # 处理时间戳：如果是毫秒级时间戳，转换为秒级
+        start_time = self.config['start_time']
+        end_time = self.config['end_time']
+        frozen_time = self.config.get('frozen_time', 0)
+
+        # 检查是否为毫秒级时间戳（大于某个阈值，比如2000年的时间戳*1000）
+        if start_time > 946684800000:  # 2000-01-01 00:00:00 的毫秒时间戳
+            start_time = start_time // 1000
+        if end_time > 946684800000:
+            end_time = end_time // 1000
+
+        # 兼容 frozen_time 的多种含义：
+        # 1) 如果 frozen_time 看起来像一个毫秒级的时间戳（> 2000 年），则视为封榜开始时间戳，计算封榜时长 = end_time - frozen_timestamp
+        # 2) 否则，如果 frozen_time 看起来像毫秒级的时长（>1000），则视为毫秒时长，转换为小时
+        # 3) 否则，尝试按秒或小时直接使用
+        frozen_hours = 0
+        try:
+            if frozen_time is None:
+                frozen_hours = 0
+            elif isinstance(frozen_time, (int, float)) and frozen_time > 946684800000:
+                # 毫秒级时间戳
+                frozen_ts = int(frozen_time) // 1000
+                frozen_hours = (end_time - frozen_ts) / 3600
+            elif isinstance(frozen_time, (int, float)) and frozen_time > 1000:
+                # 很可能是毫秒级的时长（例如 3600000 表示 1 小时）
+                frozen_hours = float(frozen_time) / 1000.0 / 3600.0
+            else:
+                # 可能已经是秒或小时数，优先当成秒处理再转小时，否则直接当小时
+                if isinstance(frozen_time, (int, float)) and frozen_time > 3600:
+                    # 当作秒
+                    frozen_hours = float(frozen_time) / 3600.0
+                else:
+                    frozen_hours = float(frozen_time)
+        except Exception:
+            frozen_hours = 0
+
+        duration = (end_time - start_time) / 3600
+        return rank3.Contest(self.config['contest_name'], start_time, duration, frozen_hours)
 
     def problems(self) -> List[rank3.Problem]:
         problems = []
@@ -206,7 +242,18 @@ class Parse:
 
     def rows(self, markers) -> List[rank3.Row]:
         data = []
-        for k, v in self.teams.items():
+        
+        # 处理 teams 数据格式兼容性：支持字典和列表两种格式
+        if isinstance(self.teams, dict):
+            # 旧格式：字典 {"J12": {"team_id": "J12", "name": "Echo", ...}, ...}
+            teams_items = self.teams.items()
+        elif isinstance(self.teams, list):
+            # 新格式：列表 [{"id": "team001", "name": {...}, ...}, ...]
+            teams_items = [(team.get('id', str(i)), team) for i, team in enumerate(self.teams)]
+        else:
+            raise TypeError(f"Unsupported teams data type: {type(self.teams)}")
+            
+        for k, v in teams_items:
             u_markers = []
 
             # 判断是否有教练
@@ -247,33 +294,124 @@ class Parse:
                     if m not in u_markers:
                         u_markers.append(m)
 
+            # 处理队伍名称：兼容新旧格式
+            team_name = v.get('name', '')
+            if isinstance(team_name, dict) and 'texts' in team_name:
+                # 新格式：多语言名称
+                fallback_lang = team_name.get('fallback_lang', 'zh-CN')
+                texts = team_name.get('texts', {})
+                # 优先使用 fallback_lang 指定的语言，否则使用 zh-CN，最后使用第一个可用的语言
+                if fallback_lang in texts:
+                    team_name = texts[fallback_lang]
+                elif 'zh-CN' in texts:
+                    team_name = texts['zh-CN']
+                elif texts:
+                    team_name = list(texts.values())[0]
+                else:
+                    team_name = ''
+
             members = None
             if v.get('members', None) is not None:
-                members =  [x for x in v['members'] if x is not None and str(x).lower() != 'null']
+                processed_members = []
+                for member in v['members']:
+                    if member is not None and str(member).lower() != 'null':
+                        # 处理成员名称：兼容新旧格式
+                        if isinstance(member, dict) and 'name' in member:
+                            # 先提取 name 字段
+                            member_name_obj = member['name']
+                            if isinstance(member_name_obj, dict) and 'texts' in member_name_obj:
+                                # 新格式：多语言成员名称
+                                fallback_lang = member_name_obj.get('fallback_lang', 'zh-CN')
+                                texts = member_name_obj.get('texts', {})
+                                if fallback_lang in texts:
+                                    member_name = texts[fallback_lang]
+                                elif 'zh-CN' in texts:
+                                    member_name = texts['zh-CN']
+                                elif texts:
+                                    member_name = list(texts.values())[0]
+                                else:
+                                    member_name = str(member_name_obj)
+                            else:
+                                # name 字段直接是字符串
+                                member_name = str(member_name_obj)
+                        else:
+                            # 旧格式：直接是字符串
+                            member_name = str(member)
+                        processed_members.append(member_name)
+                members = processed_members
             if coach is not None and type(members) is list:
                 members.append(f"{coach} (教练)")
-            user = rank3.User(v['name'], k, v.get('organization', None), members, official, u_markers)
+            
+            user = rank3.User(team_name, k, v.get('organization', None), members, official, u_markers)
+            
+            # 处理队伍照片：根据 missing_photo 字段生成 x_photo 信息
+            x_photo = None
+            missing_photo = v.get('missing_photo', False)
+            if not missing_photo:  # 如果没有 missing_photo 字段或者为 False，说明有照片
+                # 从 config 中获取照片URL模板来确定文件扩展名
+                team_photo_template = self.config.get('options', {}).get('team_photo_url_template', {})
+                if team_photo_template and 'url' in team_photo_template:
+                    # 从模板URL中提取文件扩展名，如果没有则默认为 .jpg
+                    template_url = team_photo_template['url']
+                    if '.' in template_url:
+                        # 提取最后一个点后面的内容作为扩展名
+                        extension = '.' + template_url.split('.')[-1]
+                    else:
+                        extension = '.jpg'
+                    x_photo = f"{k}{extension}"
+                else:
+                    # 如果没有模板，默认使用 .jpg
+                    x_photo = f"{k}.jpg"
+
+            # 把 x_photo 放入 user.user 中（rows[].user.x_photo）而非 row 层级
+            if x_photo is not None:
+                user.user['x_photo'] = x_photo
+                    
             cnt, ctms = 0, 0
+            last_solved_time = 0  # 最后一次通过题目的时间（秒级时间戳）
             statuses = self.statuses.get(str(k), [])
 
             use_accumulate_in_seconds = self.options()
 
             for v in statuses:
-
-                v.duration //= 1000
+                v.duration //= 1000  # 转换为秒
                 if v.result in [rank3.SR_Accepted, rank3.SR_FirstBlood]:
                     cnt += 1
                     if use_accumulate_in_seconds:
                         ctms += v.duration
                     else:
                         ctms += v.duration // 60 * 60
+                    
+                    # 更新最后一次通过题目的时间
+                    # v.duration 已经转换为秒，包含了罚时+通过时间
+                    # 原始罚时公式（毫秒）：duration = 20*60*1000*tries + timestamp
+                    # 转换为秒后：duration = 20*60*tries + timestamp_in_seconds
+                    # 所以实际通过时间戳（秒） = duration - 20*60*tries
+                    actual_solve_time = v.duration - (20 * 60 * v.tries)
+                    if actual_solve_time > last_solved_time:
+                        last_solved_time = actual_solve_time
+            
             score = [cnt, ctms//60*60 if use_accumulate_in_seconds else ctms]
-            data.append({'user': user, 'score': score, 'status': statuses})
-        data.sort(key=lambda x: (x['score'][0], -x['score'][1]), reverse=True)
+            data.append({
+                'user': user, 
+                'score': score, 
+                'status': statuses,
+                'last_solved_time': last_solved_time,
+                'team_name': team_name  # 用于字典序排序
+            })
+        
+        # 优化排序逻辑：解题数(降序), 罚时(升序), 最后通过时间(升序), 队伍名称(升序)
+        data.sort(key=lambda x: (
+            -x['score'][0],  # 解题数，降序（数量越多越好）
+            x['score'][1],   # 罚时，升序（时间越少越好）
+            x['last_solved_time'] // 60,  # 最后通过时间（分钟），升序（时间越早越好）
+            x['team_name']   # 队伍名称，升序（字典序）
+        ))
 
         rows = []
         for d in data:
-            row = rank3.Row(d['user'], d['score'], d['status'],self.num_problems)
+            row = rank3.Row(d['user'], d['score'], d['status'], self.num_problems)
+            # x_photo 已直接放入 user 字段（user.user['x_photo']），无需在 row 层级重复设置
             rows.append(row)
         return rows
     

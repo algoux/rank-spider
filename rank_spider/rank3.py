@@ -255,11 +255,15 @@ class Rank:
     def __transform_rows(self) -> List[Any]:
         rows = []
         for r in self.rows:      
-            rows.append({
+            row_data = {
                 'user': r.user,
                 'score': r.score,
                 'statuses': r.statuses,
-            })
+            }
+            # 如果存在 x_photo 字段，则添加到序列化结果中
+            if hasattr(r, 'x_photo') and r.x_photo is not None:
+                row_data['x_photo'] = r.x_photo
+            rows.append(row_data)
         
         return rows
 
