@@ -217,7 +217,7 @@ class Parse:
             icpc_rule = {
                 "preset": "ICPC",
                 "options": {
-                    "ratio": {"value": [self.gold, self.silver, self.bronze]}
+                    "ratio": {"value": [self.gold, self.silver, self.bronze], "denominator": "scored"}
                 }
             }
         
