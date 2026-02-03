@@ -4,6 +4,7 @@ import rank3
 import re
 import os
 from typing import Dict, List, Union
+import image_downloader
 
 
 # contest_name: url
@@ -124,6 +125,8 @@ class Parse:
         start_time = self.config['start_time']
         end_time = self.config['end_time']
         frozen_time = self.config.get('frozen_time', 0)
+        link = self.config.get('link', None)
+        banner = self.config.get('banner', None)
 
         # 检查是否为毫秒级时间戳（大于某个阈值，比如2000年的时间戳*1000）
         if start_time > 946684800000:  # 2000-01-01 00:00:00 的毫秒时间戳
@@ -157,7 +160,18 @@ class Parse:
             frozen_hours = 0
 
         duration = (end_time - start_time) / 3600
-        return rank3.Contest(self.config['contest_name'], start_time, duration, frozen_hours)
+        
+        # 处理 banner：转换为 {image, link} 格式
+        processed_banner = None
+        if banner is not None and isinstance(banner, dict):
+            original_link = banner.get('url') 
+            if original_link:
+                processed_banner = {
+                    'image': original_link,
+                    'link': original_link
+                }
+        
+        return rank3.Contest(self.config['contest_name'], start_time, duration, frozen_hours, link, processed_banner)
 
     def problems(self) -> List[rank3.Problem]:
         problems = []
@@ -336,19 +350,23 @@ class Parse:
 
             # 处理队伍名称：兼容新旧格式
             team_name = v.get('name', '')
-            if isinstance(team_name, dict) and 'texts' in team_name:
-                # 新格式：多语言名称
-                fallback_lang = team_name.get('fallback_lang', 'zh-CN')
-                texts = team_name.get('texts', {})
-                # 优先使用 fallback_lang 指定的语言，否则使用 zh-CN，最后使用第一个可用的语言
-                if fallback_lang in texts:
-                    team_name = texts[fallback_lang]
-                elif 'zh-CN' in texts:
-                    team_name = texts['zh-CN']
-                elif texts:
-                    team_name = list(texts.values())[0]
+            if isinstance(team_name, dict):
+                if 'texts' in team_name:
+                    # 新格式：多语言名称
+                    fallback_lang = team_name.get('fallback_lang', 'zh-CN')
+                    texts = team_name.get('texts', {})
+                    # 优先使用 fallback_lang 指定的语言，否则使用 zh-CN，最后使用第一个可用的语言
+                    if fallback_lang in texts:
+                        team_name = texts[fallback_lang]
+                    elif 'zh-CN' in texts:
+                        team_name = texts['zh-CN']
+                    elif texts:
+                        team_name = list(texts.values())[0]
+                    else:
+                        team_name = ''
                 else:
-                    team_name = ''
+                    # 如果是字典但没有 texts 字段，转换为字符串
+                    team_name = str(team_name)
 
             members = None
             if v.get('members', None) is not None:
@@ -382,7 +400,7 @@ class Parse:
             if coach is not None and type(members) is list:
                 members.append(f"{coach} (教练)")
             
-            user = rank3.User(team_name, k, v.get('organization', None), members, official, u_markers)
+            user = rank3.User(team_name, k, v.get('organization', None), members, official, u_markers, v.get('location', None), v.get('avatar', None), v.get('photo', None))
             
             # 处理队伍照片：根据 missing_photo 字段生成 x_photo 信息
             x_photo = None
@@ -531,6 +549,7 @@ class Parse:
             self.statistics[problem_idx][1] += 1
 
 
+
 def main():
     url = get('https://board.xcpcio.com/data/index/contest_list.json')
     icpc = {}
@@ -579,6 +598,13 @@ def call_rank(path: str, name: str):
     if runs is None:
         print(f"{path} 获取 run.json 失败")
         return
+
+    # 下载 banner 图片
+    banner = config.get('banner', None)
+    if banner is not None:
+        # 从 name 中提取比赛 ID，例如 'ccpc/ccpc7thfinal.srk.json' -> 'ccpc7thfinal'
+        contest_id = name.split('/')[-1].replace('.srk.json', '')
+        image_downloader.download_banner(banner, contest_id)
 
     set_contest_url(path, config)
     runs.sort(key=lambda x: x['timestamp'])

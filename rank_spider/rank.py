@@ -32,13 +32,14 @@ Style_Pink = 'pink'
 
 
 class Contest:
-    def __init__(self, title: str, start_at: int, duration: float, frozen_duration: float = 0, link: str = None) -> None:
+    def __init__(self, title: str, start_at: int, duration: float, frozen_duration: float = 0, link: str = None, banner: str = None) -> None:
         '''
             title: 标题
             start_at: 开始时间，秒级时间戳
             duration: 持续时长，单位/小时
             frozen_duration: 封榜时长，单位/小时【可选】
             link: 比赛的外链地址【可选】
+            banner: 比赛的头部大横幅【可选】
         '''
         self.contest = {
             'title': {'zh-CN': title, 'en': '', 'fallback': ''},
@@ -48,8 +49,8 @@ class Contest:
         }
         if link is not None:
             self.contest['link'] = link  
-
-
+        if banner is not None:
+            self.contest['banner'] = banner  
 class Problem:
     def __init__(self, alias: str, statistics: Tuple[int, int] = None, style: Tuple[str, str] = None, **kwargs) -> None:
         '''
@@ -103,7 +104,7 @@ class Marker:
 
 
 class User:
-    def __init__(self, name: str, id: str = None, organization: str = None, members: List[str] = None, official: bool = None, marker: Marker = None) -> None:
+    def __init__(self, name: str, id: str = None, organization: str = None, members: List[str] = None, official: bool = None, marker: Marker = None, location: str = None, avatar: str = None, photo: str = None) -> None:
         '''
             name: 用户名或队伍名
             id: 队伍 ID【可选】
@@ -111,6 +112,9 @@ class User:
             member: 队员名【可选】
             official: 是否是正式比赛队伍【可选】
             marker: 特殊队伍标记【可选】
+            location: 选手位置（座位号）
+            avatar: 选手的小头像 avatar（一般就是对应学校的校徽图片）
+            photo: 选手的照片（一般点击选手单元格后弹窗展示）
         '''
         self.user = {'name': name}
         if id is not None:
@@ -126,8 +130,12 @@ class User:
             self.user['official'] = official
         if marker is not None:
             self.user['marker'] = marker.marker['id']
-
-
+        if location is not None:
+            self.user['location'] = location
+        if avatar is not None:
+            self.user['avatar'] = avatar
+        if photo is not None:
+            self.user['photo'] = photo
 class Order:
     def __init__(self, order: int = None, segment_index: int = None) -> None:
         '''

@@ -34,6 +34,8 @@ class Parse:
         start_time = self.config.get('start_time')
         end_time = self.config.get('end_time')
         frozen_time = self.config.get('frozen_time', 0)
+        link = self.config.get('contest_link', None)
+        banner = self.config.get('banner', None)
 
         # 兼容毫秒级或秒级时间戳
         if start_time is not None and start_time > 946684800000:
@@ -61,7 +63,7 @@ class Parse:
         except Exception:
             frozen_hours = 0
 
-        return rank.Contest(self.config['contest_name'], start_time, duration, frozen_hours)
+        return rank.Contest(self.config['contest_name'], start_time, duration, frozen_hours, link, banner)
 
     def problems(self) -> List[rank.Problem]:
         problems = []
@@ -91,7 +93,10 @@ class Parse:
             marker = None
             if v.get('girl') == 1:
                 marker = rank.Marker('female', '女队', 'pink')
-            user = rank.User(v['name'], k, v['organization'], v.setdefault('members', None), official, marker)
+            location = v.get('location', None)
+            avatar = v.get('avatar', None)
+            photo = v.get('photo', None)
+            user = rank.User(v['name'], k, v['organization'], v.setdefault('members', None), official, marker, location, avatar, photo)
             cnt, ctm = 0, 0
             statuses = self.statuses.setdefault(str(k), [])
             for v in statuses:
