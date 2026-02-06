@@ -69,10 +69,11 @@ srkDefaultBallonColors = [
 
 class Parse:
     time_unit = 'ms'
-    def __init__(self, config: Dict, teams: Dict, runs: Dict) -> None:
+    def __init__(self, config: Dict, teams: Dict, runs: Dict, org: List[Dict] = None) -> None:
         self.config = config
         self.teams = teams
         self.runs = runs
+        self.org = org
         
         # 兼容不同的配置格式：优先使用 problem_id 数组，否则从 problems 对象数组提取
         if 'problem_id' in config:
@@ -118,6 +119,7 @@ class Parse:
         self.group = config.get('group', {})
         self.statistics = [[0, 0] for i in self.problem_id_list]
         self.statuses = {}
+        self.org = org
         self.__calculate()
 
     def contest(self) -> rank3.Contest:
@@ -316,9 +318,31 @@ class Parse:
             u_markers = []
 
             # 判断是否有教练
-            coach = None
+            coaches = []
             if v.get('coach', None) is not None:
-                coach = v.get('coach')
+                coaches.append(v.get('coach'))
+            if v.get('coaches', None) is not None:
+                for coach_item in v['coaches']:
+                    if coach_item is not None and str(coach_item).lower() != 'null':
+                        if isinstance(coach_item, dict):
+                            if 'texts' in coach_item:
+                                fallback_lang = coach_item.get('fallback_lang', 'zh-CN')
+                                texts = coach_item.get('texts', {})
+                                if 'zh-CN' in texts:
+                                    coach_name = texts['zh-CN']
+                                elif fallback_lang in texts:
+                                    coach_name = texts[fallback_lang]
+                                elif texts:
+                                    coach_name = list(texts.values())[0]
+                                else:
+                                    coach_name = str(coach_item)
+                            elif 'fallback' in coach_item:
+                                coach_name = coach_item['fallback']
+                            else:
+                                coach_name = str(coach_item)
+                        else:
+                            coach_name = str(coach_item)
+                        coaches.append(coach_name)
             # 判断是否为正式队伍的逻辑
             original_official = v.get('official', 0) == 1
             group = v.get('group', [])
@@ -357,20 +381,21 @@ class Parse:
             team_name = v.get('name', '')
             if isinstance(team_name, dict):
                 if 'texts' in team_name:
-                    # 新格式：多语言名称
                     fallback_lang = team_name.get('fallback_lang', 'zh-CN')
                     texts = team_name.get('texts', {})
-                    # 优先使用 fallback_lang 指定的语言，否则使用 zh-CN，最后使用第一个可用的语言
-                    if fallback_lang in texts:
-                        team_name = texts[fallback_lang]
-                    elif 'zh-CN' in texts:
+                    if 'zh-CN' in texts:
                         team_name = texts['zh-CN']
+                    elif fallback_lang in texts:
+                        team_name = texts[fallback_lang]
                     elif texts:
                         team_name = list(texts.values())[0]
                     else:
                         team_name = ''
+                elif 'fallback' in team_name:
+                    # 只有 fallback 字段的旧格式
+                    team_name = team_name['fallback']
                 else:
-                    # 如果是字典但没有 texts 字段，转换为字符串
+                    # 其他格式，转换为字符串
                     team_name = str(team_name)
 
             members = None
@@ -378,34 +403,73 @@ class Parse:
                 processed_members = []
                 for member in v['members']:
                     if member is not None and str(member).lower() != 'null':
-                        # 处理成员名称：兼容新旧格式
-                        if isinstance(member, dict) and 'name' in member:
-                            # 先提取 name 字段
-                            member_name_obj = member['name']
-                            if isinstance(member_name_obj, dict) and 'texts' in member_name_obj:
-                                # 新格式：多语言成员名称
-                                fallback_lang = member_name_obj.get('fallback_lang', 'zh-CN')
-                                texts = member_name_obj.get('texts', {})
-                                if fallback_lang in texts:
-                                    member_name = texts[fallback_lang]
-                                elif 'zh-CN' in texts:
+                        if isinstance(member, dict):
+                            if 'texts' in member:
+                                # 直接包含 texts 字段
+                                fallback_lang = member.get('fallback_lang', 'zh-CN')
+                                texts = member.get('texts', {})
+                                if 'zh-CN' in texts:
                                     member_name = texts['zh-CN']
+                                elif fallback_lang in texts:
+                                    member_name = texts[fallback_lang]
                                 elif texts:
                                     member_name = list(texts.values())[0]
                                 else:
-                                    member_name = str(member_name_obj)
+                                    member_name = str(member)
+                            elif 'name' in member:
+                                member_name_obj = member['name']
+                                if isinstance(member_name_obj, dict) and 'texts' in member_name_obj:
+                                    fallback_lang = member_name_obj.get('fallback_lang', 'zh-CN')
+                                    texts = member_name_obj.get('texts', {})
+                                    if 'zh-CN' in texts:
+                                        member_name = texts['zh-CN']
+                                    elif fallback_lang in texts:
+                                        member_name = texts[fallback_lang]
+                                    elif texts:
+                                        member_name = list(texts.values())[0]
+                                    else:
+                                        member_name = str(member_name_obj)
+                                else:
+                                    if isinstance(member_name_obj, dict) and 'fallback' in member_name_obj:
+                                        member_name = member_name_obj['fallback']
+                                    else:
+                                        member_name = str(member_name_obj)
+                            elif 'fallback' in member:
+                                member_name = member['fallback']
                             else:
-                                # name 字段直接是字符串
-                                member_name = str(member_name_obj)
+                                member_name = str(member)
                         else:
-                            # 旧格式：直接是字符串
                             member_name = str(member)
                         processed_members.append(member_name)
                 members = processed_members
-            if coach is not None and type(members) is list:
-                members.append(f"{coach} (教练)")
+            if len(coaches) > 0 and type(members) is list:
+                for coach in coaches:
+                    members.append(f"{coach} (教练)")
+
+            orgName = None
+            if v.get('organization_id', None) is not None and self.org is not None:
+                organization_id = v.get('organization_id')
+                for org_item in self.org:
+                    if org_item.get('id') == organization_id:
+                        org_name_obj = org_item.get('name', {})
+                        if isinstance(org_name_obj, dict):
+                            if 'texts' in org_name_obj:
+                                texts = org_name_obj.get('texts', {})
+                                fallback_lang = org_name_obj.get('fallback_lang', 'zh-CN')
+                                # 优先使用 zh-CN，如果没有则使用 fallback_lang，最后使用第一个可用的
+                                if 'zh-CN' in texts:
+                                    orgName = texts['zh-CN']
+                                elif fallback_lang in texts:
+                                    orgName = texts[fallback_lang]
+                                elif texts:
+                                    orgName = list(texts.values())[0]
+                            elif 'fallback' in org_name_obj:
+                                # 只有 fallback 字段
+                                orgName = org_name_obj['fallback']
+                        break
+
             
-            user = rank3.User(team_name, k, v.get('organization', None), members, official, u_markers, v.get('location', None), v.get('avatar', None), v.get('photo', None))
+            user = rank3.User(team_name, k, orgName, members, official, u_markers, v.get('location', None), v.get('avatar', None), v.get('photo', None))
             
             # 处理队伍照片：根据 missing_photo 字段生成 x_photo 信息
             x_photo = None
@@ -593,6 +657,7 @@ def call_rank(path: str, name: str):
     config = get(f'https://board.xcpcio.com/data{path}/config.json')
     teams = get(f'https://board.xcpcio.com/data{path}/team.json')
     runs = get(f'https://board.xcpcio.com/data{path}/run.json')
+    org = get(f'https://board.xcpcio.com/data{path}/organizations.json')
 
     if config is None:
         print(f"{path} 获取 config.json 失败")
@@ -603,7 +668,6 @@ def call_rank(path: str, name: str):
     if runs is None:
         print(f"{path} 获取 run.json 失败")
         return
-
     # 下载 banner 图片
     banner = config.get('banner', None)
     if banner is not None:
@@ -623,7 +687,7 @@ def call_rank(path: str, name: str):
     if runs[0]['timestamp']/1000 < 1:
         print(f"获取 runs 失败, {runs[0]['timestamp']}")
         Parse.time_unit = 's'
-    parse = Parse(config, teams, runs)
+    parse = Parse(config, teams, runs, org)
     contest = parse.contest()
     problems = parse.problems()
     marker = parse.markers()
