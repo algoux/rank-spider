@@ -211,6 +211,11 @@ class Parse:
                 self.bronze = 0.3
                 ccpcFlag = True
                 toRemarks = False
+        elif type(self.config.get('medal')) is dict and self.config['medal'].get('all') is not None:
+            self.gold = self.config['medal']['all']['gold']
+            self.silver = self.config['medal']['all']['silver']
+            self.bronze = self.config['medal']['all']['bronze']
+            toRemarks = False
         else:
             self.gold = 0
             self.silver = 0
@@ -569,11 +574,11 @@ def main():
             if vv.get('board_link'):
                 province[k+vk] = vv['board_link']
         
-    icpc.pop('2018world-finals')
-    icpc.pop('2019world-finals')
-    icpc.pop('2020world-finals')
-    icpc.pop('2020world-finals-Invitational')
-    icpc.pop('48thworld-finals')
+    # icpc.pop('2018world-finals')
+    # icpc.pop('2019world-finals')
+    # icpc.pop('2020world-finals')
+    # icpc.pop('2020world-finals-Invitational')
+    # icpc.pop('48thworld-finals')
     for k, v in icpc.items():
         call_rank(path=v, name=f'icpc/icpc{k}.srk.json')
     for k, v in ccpc.items():
