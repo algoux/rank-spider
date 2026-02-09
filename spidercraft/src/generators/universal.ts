@@ -7,7 +7,7 @@ import {
   regenerateRanklistBySolutions,
 } from '@algoux/standard-ranklist-utils';
 
-const SRK_VERSION = '0.3.10';
+const SRK_VERSION = '0.3.12';
 
 export interface SrkGeneratorInitOptions {
   contest: srk.Contest;
