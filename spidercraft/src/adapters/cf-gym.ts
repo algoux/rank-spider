@@ -478,5 +478,7 @@ export async function run(
     calculateFB: true,
     disableFBIfConflict: true,
   });
-  return generator.getSrk();
+  const srkObject = generator.getSrk();
+  delete srkObject.markers;
+  return srkObject;
 }
