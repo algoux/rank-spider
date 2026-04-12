@@ -75,6 +75,18 @@ class Parse:
         self.runs = runs
         self.org = org
         
+        # 建立 organization_id → org_name 的映射，用于快速查询
+        self.org_map = {}
+        if org is not None and isinstance(org, list):
+            for org_item in org:
+                if org_item.get('id') is not None:
+                    org_id = org_item['id']
+                    # 提取 org 的 name 字段（可能是字符串或多语言对象）
+                    org_name_obj = org_item.get('name', {})
+                    org_name = self._extract_org_name(org_name_obj)
+                    if org_name:
+                        self.org_map[org_id] = org_name
+        
         # 兼容不同的配置格式：优先使用 problem_id 数组，否则从 problems 对象数组提取
         if 'problem_id' in config:
             self.problem_id_list = config['problem_id']
@@ -121,6 +133,57 @@ class Parse:
         self.statuses = {}
         self.org = org
         self.__calculate()
+
+    def _extract_localized_name(self, value) -> str:
+        if value is None:
+            return ''
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            # 常见格式：{"name": {...}}，递归提取实际姓名对象
+            if 'name' in value:
+                return self._extract_localized_name(value.get('name'))
+            if 'texts' in value:
+                fallback_lang = value.get('fallback_lang', 'zh-CN')
+                texts = value.get('texts', {})
+                if isinstance(texts, dict):
+                    if 'zh-CN' in texts:
+                        return texts['zh-CN']
+                    if fallback_lang in texts:
+                        return texts[fallback_lang]
+                    if texts:
+                        return next(iter(texts.values()))
+                return ''
+            if 'fallback' in value:
+                return value.get('fallback', '')
+        return str(value)
+
+    def _extract_org_name(self, value) -> str:
+        """提取组织/学校名称，处理多语言和不同格式"""
+        if value is None:
+            return ''
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            # 处理多语言格式
+            if 'texts' in value:
+                fallback_lang = value.get('fallback_lang', 'zh-CN')
+                texts = value.get('texts', {})
+                if isinstance(texts, dict):
+                    if 'zh-CN' in texts:
+                        return texts['zh-CN']
+                    if fallback_lang in texts:
+                        return texts[fallback_lang]
+                    if texts:
+                        return next(iter(texts.values()))
+                return ''
+            # 处理简单格式
+            if 'fallback' in value:
+                return value.get('fallback', '')
+            # 如果是其他格式，尝试转换为字符串
+            if value:
+                return str(value)
+        return ''
 
     def contest(self) -> rank3.Contest:
         # 处理时间戳：如果是毫秒级时间戳，转换为秒级
@@ -320,29 +383,15 @@ class Parse:
             # 判断是否有教练
             coaches = []
             if v.get('coach', None) is not None:
-                coaches.append(v.get('coach'))
+                coach_name = self._extract_localized_name(v.get('coach'))
+                if coach_name:
+                    coaches.append(coach_name)
             if v.get('coaches', None) is not None:
                 for coach_item in v['coaches']:
                     if coach_item is not None and str(coach_item).lower() != 'null':
-                        if isinstance(coach_item, dict):
-                            if 'texts' in coach_item:
-                                fallback_lang = coach_item.get('fallback_lang', 'zh-CN')
-                                texts = coach_item.get('texts', {})
-                                if 'zh-CN' in texts:
-                                    coach_name = texts['zh-CN']
-                                elif fallback_lang in texts:
-                                    coach_name = texts[fallback_lang]
-                                elif texts:
-                                    coach_name = list(texts.values())[0]
-                                else:
-                                    coach_name = str(coach_item)
-                            elif 'fallback' in coach_item:
-                                coach_name = coach_item['fallback']
-                            else:
-                                coach_name = str(coach_item)
-                        else:
-                            coach_name = str(coach_item)
-                        coaches.append(coach_name)
+                        coach_name = self._extract_localized_name(coach_item)
+                        if coach_name:
+                            coaches.append(coach_name)
             # 判断是否为正式队伍的逻辑
             original_official = v.get('official', 0) == 1
             group = v.get('group', [])
@@ -403,70 +452,18 @@ class Parse:
                 processed_members = []
                 for member in v['members']:
                     if member is not None and str(member).lower() != 'null':
-                        if isinstance(member, dict):
-                            if 'texts' in member:
-                                # 直接包含 texts 字段
-                                fallback_lang = member.get('fallback_lang', 'zh-CN')
-                                texts = member.get('texts', {})
-                                if 'zh-CN' in texts:
-                                    member_name = texts['zh-CN']
-                                elif fallback_lang in texts:
-                                    member_name = texts[fallback_lang]
-                                elif texts:
-                                    member_name = list(texts.values())[0]
-                                else:
-                                    member_name = str(member)
-                            elif 'name' in member:
-                                member_name_obj = member['name']
-                                if isinstance(member_name_obj, dict) and 'texts' in member_name_obj:
-                                    fallback_lang = member_name_obj.get('fallback_lang', 'zh-CN')
-                                    texts = member_name_obj.get('texts', {})
-                                    if 'zh-CN' in texts:
-                                        member_name = texts['zh-CN']
-                                    elif fallback_lang in texts:
-                                        member_name = texts[fallback_lang]
-                                    elif texts:
-                                        member_name = list(texts.values())[0]
-                                    else:
-                                        member_name = str(member_name_obj)
-                                else:
-                                    if isinstance(member_name_obj, dict) and 'fallback' in member_name_obj:
-                                        member_name = member_name_obj['fallback']
-                                    else:
-                                        member_name = str(member_name_obj)
-                            elif 'fallback' in member:
-                                member_name = member['fallback']
-                            else:
-                                member_name = str(member)
-                        else:
-                            member_name = str(member)
-                        processed_members.append(member_name)
+                        member_name = self._extract_localized_name(member)
+                        if member_name:
+                            processed_members.append(member_name)
                 members = processed_members
             if len(coaches) > 0 and type(members) is list:
                 for coach in coaches:
                     members.append(f"{coach} (教练)")
 
             orgName = None
-            if v.get('organization_id', None) is not None and self.org is not None:
+            if v.get('organization_id', None) is not None and self.org_map:
                 organization_id = v.get('organization_id')
-                for org_item in self.org:
-                    if org_item.get('id') == organization_id:
-                        org_name_obj = org_item.get('name', {})
-                        if isinstance(org_name_obj, dict):
-                            if 'texts' in org_name_obj:
-                                texts = org_name_obj.get('texts', {})
-                                fallback_lang = org_name_obj.get('fallback_lang', 'zh-CN')
-                                # 优先使用 zh-CN，如果没有则使用 fallback_lang，最后使用第一个可用的
-                                if 'zh-CN' in texts:
-                                    orgName = texts['zh-CN']
-                                elif fallback_lang in texts:
-                                    orgName = texts[fallback_lang]
-                                elif texts:
-                                    orgName = list(texts.values())[0]
-                            elif 'fallback' in org_name_obj:
-                                # 只有 fallback 字段
-                                orgName = org_name_obj['fallback']
-                        break
+                orgName = self.org_map.get(organization_id)
 
             
             user = rank3.User(team_name, k, orgName, members, official, u_markers, v.get('location', None), v.get('avatar', None), v.get('photo', None))
