@@ -190,7 +190,7 @@ export async function run(url: string) {
     contributors: ['algoUX (https://algoux.org)'],
     useICPCPreset: true,
     icpcPresetOptions: {
-      sorterNoPenaltyResults: ['FB', 'AC', '?', 'CE', 'UKE', null],
+      sorterNoPenaltyResults: ['FB', 'AC', '?', 'NOUT', 'CE', 'UKE', null],
       mainRankSeriesRule: {
         count: {
           value: [0, 0, 0],

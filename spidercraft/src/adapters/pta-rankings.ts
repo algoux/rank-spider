@@ -331,7 +331,7 @@ export async function run(cid: string) {
     contributors: ['algoUX (https://algoux.org)'],
     useICPCPreset: true,
     icpcPresetOptions: {
-      sorterNoPenaltyResults: ['FB', 'AC', '?', 'CE', null],
+      sorterNoPenaltyResults: ['FB', 'AC', '?', 'NOUT', 'CE', 'UKE', null],
       mainRankSeriesRule: {
         count: {
           value: [0, 0, 0],
