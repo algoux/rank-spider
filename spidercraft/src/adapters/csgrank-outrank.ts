@@ -13,6 +13,22 @@ dayjs.extend(timezone);
 
 const DEFAULT_SOURCE_TZ = 'Asia/Shanghai';
 const USER_AGENT = 'algoUXRankSpiderCraft/1.0 csgrank-outrank';
+const GROUP_MARKER_STYLE_PRESETS: srk.MarkerStylePreset[] = [
+  'blue',
+  'green',
+  'yellow',
+  'orange',
+  'red',
+  'purple',
+];
+const EXTRA_GROUP_MARKER_COLORS = [
+  'rgb(20, 184, 166)',
+  'rgb(14, 165, 233)',
+  'rgb(132, 204, 22)',
+  'rgb(236, 72, 153)',
+  'rgb(100, 116, 139)',
+  'rgb(217, 119, 6)',
+];
 
 export interface CSGRankOutrankAsset {
   kind: 'contest-banner' | 'user-avatar';
@@ -36,8 +52,10 @@ interface CSGRankOutrankContest {
   start_time: string;
   end_time: string;
   award_ratio?: number;
+  flg_award_qty_mode?: number | string;
   frozen_minute?: number;
   frozen_after?: number;
+  contest_group?: CSGRankOutrankContestGroup[];
 }
 
 interface CSGRankOutrankProblem {
@@ -75,9 +93,14 @@ interface CSGRankOutrankSolution {
 }
 
 interface CSGRankOutrankContestGroup {
-  award_ratio_gold?: number;
-  award_ratio_silver?: number;
-  award_ratio_bronze?: number;
+  group_id?: string | number;
+  group_name?: string;
+  group_name_en?: string;
+  group_order?: string | number;
+  award_ratio_gold?: number | string;
+  award_ratio_silver?: number | string;
+  award_ratio_bronze?: number | string;
+  flg_award_qty_mode?: number | string;
 }
 
 interface CSGRankOutrankData {
@@ -363,8 +386,22 @@ function isIncludedSolution(solution: CSGRankOutrankSolution): boolean {
   return solution.result !== 11;
 }
 
-function userIdFromSolutionTeamId(teamId: string): string {
-  return String(teamId).replace(/^#cpc\d+?_/, '');
+function dedupeStrings(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
+function solutionTeamIdCandidates(teamId: string): string[] {
+  const raw = String(teamId);
+  const withoutContestPrefix = raw.replace(/^#cpc\d+?_/, '');
+  return dedupeStrings([
+    raw,
+    withoutContestPrefix,
+    withoutContestPrefix.replace(/^teamteam/, 'team'),
+  ]);
+}
+
+function resolveSolutionUserId(teamId: string, knownUserIds: Set<string>): string | undefined {
+  return solutionTeamIdCandidates(teamId).find((candidate) => knownUserIds.has(candidate));
 }
 
 function makeUserName(team: CSGRankOutrankTeam): srk.Text {
@@ -378,26 +415,143 @@ function makeUserName(team: CSGRankOutrankTeam): srk.Text {
   return team.name;
 }
 
-function parseAwardRatios(data: CSGRankOutrankData): number[] {
+interface AwardRatioPack {
+  gold: number;
+  silver: number;
+  bronze: number;
+  qtyMode: boolean;
+}
+
+function parseInteger(value: unknown, fallback: number): number {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parsePackedAwardRatio(awardRatio: unknown): Pick<AwardRatioPack, 'gold' | 'silver' | 'bronze'> {
+  let ratio = parseInteger(awardRatio, 30020010);
+  const gold = ratio % 1000;
+  ratio = Math.floor(ratio / 1000);
+  const silver = ratio % 1000;
+  ratio = Math.floor(ratio / 1000);
+  const bronze = ratio % 1000;
+  return { gold, silver, bronze };
+}
+
+function parseAwardRatioPack(data: CSGRankOutrankData): AwardRatioPack {
   const group = data.contest_group?.[0];
   if (
     group &&
-    typeof group.award_ratio_gold === 'number' &&
-    typeof group.award_ratio_silver === 'number' &&
-    typeof group.award_ratio_bronze === 'number'
+    group.award_ratio_gold !== undefined &&
+    group.award_ratio_silver !== undefined &&
+    group.award_ratio_bronze !== undefined
   ) {
-    return [
-      group.award_ratio_gold / 100,
-      group.award_ratio_silver / 100,
-      group.award_ratio_bronze / 100,
-    ];
+    return {
+      gold: parseInteger(group.award_ratio_gold, 10),
+      silver: parseInteger(group.award_ratio_silver, 15),
+      bronze: parseInteger(group.award_ratio_bronze, 20),
+      qtyMode: parseInteger(group.flg_award_qty_mode, 0) === 1,
+    };
   }
 
-  const awardRatio = data.contest.award_ratio ?? 30020010;
-  const ratioGold = (awardRatio % 1000) / 100;
-  const ratioSilver = (Math.floor(awardRatio / 1000) % 1000) / 100;
-  const ratioBronze = Math.floor(awardRatio / 1000000) / 100;
-  return [ratioGold, ratioSilver, ratioBronze];
+  return {
+    ...parsePackedAwardRatio(data.contest.award_ratio),
+    qtyMode: parseInteger(data.contest.flg_award_qty_mode, 0) === 1,
+  };
+}
+
+function makeMainRankSeriesRule(
+  data: CSGRankOutrankData,
+): srk.RankSeriesRulePresetICPC['options'] {
+  const award = parseAwardRatioPack(data);
+  if (award.qtyMode) {
+    return {
+      count: {
+        value: [award.gold, award.silver, award.bronze],
+      },
+    };
+  }
+
+  return {
+    ratio: {
+      value: [award.gold / 100, award.silver / 100, award.bronze / 100],
+      denominator: 'scored',
+    },
+  };
+}
+
+function getContestGroups(data: CSGRankOutrankData): CSGRankOutrankContestGroup[] {
+  const groups = data.contest_group?.length ? data.contest_group : data.contest.contest_group;
+  if (!Array.isArray(groups)) return [];
+
+  const seenGroupIds = new Set<string>();
+  return groups
+    .map((group, index) => ({
+      group,
+      index,
+      id: String(group.group_id ?? ''),
+      order: parseInteger(group.group_order, index),
+    }))
+    .filter(({ id }) => !!id)
+    .sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order;
+      return a.index - b.index;
+    })
+    .filter(({ id }) => {
+      if (seenGroupIds.has(id)) return false;
+      seenGroupIds.add(id);
+      return true;
+    })
+    .map(({ group }) => group);
+}
+
+function makeGroupMarkerLabel(group: CSGRankOutrankContestGroup): srk.Text {
+  const label = group.group_name || String(group.group_id);
+  if (group.group_name_en) {
+    return {
+      'zh-CN': label,
+      'en-US': group.group_name_en,
+      fallback: label,
+    };
+  }
+  return label;
+}
+
+function markerStyleByIndex(index: number): srk.Marker['style'] {
+  const preset = GROUP_MARKER_STYLE_PRESETS[index];
+  if (preset) return preset;
+  return {
+    backgroundColor: EXTRA_GROUP_MARKER_COLORS[
+      (index - GROUP_MARKER_STYLE_PRESETS.length) % EXTRA_GROUP_MARKER_COLORS.length
+    ],
+  };
+}
+
+function buildGroupMarkers(data: CSGRankOutrankData): srk.Marker[] {
+  return getContestGroups(data).map((group, index) => ({
+    id: String(group.group_id),
+    label: makeGroupMarkerLabel(group),
+    style: markerStyleByIndex(index),
+  }));
+}
+
+function buildMarkers(data: CSGRankOutrankData): srk.Marker[] {
+  return [
+    ...buildGroupMarkers(data),
+    {
+      id: 'female',
+      label: '女队',
+      style: 'pink',
+    },
+  ];
+}
+
+function buildUserMarkers(team: CSGRankOutrankTeam, groupMarkerIds: string[]): string[] | undefined {
+  const teamGroupIds = new Set((team.group_ids ?? []).map(String));
+  const markers = groupMarkerIds.filter((groupId) => teamGroupIds.has(groupId));
+  if (team.tkind === 1) {
+    markers.push('female');
+  }
+  return markers.length > 0 ? markers : undefined;
 }
 
 function applyFirstBloodBySolutionOrder<T extends { problemIndexOrAlias: string; result: srk.SolutionResultFull }>(
@@ -473,6 +627,12 @@ export async function run(source: string, options: CSGRankOutrankRunOptions = {}
     context.schoolBadgeBaseUrl,
     options.assetHandler,
   );
+  const teams = data.team.filter((team) => team.team_id && team.name);
+  const teamIds = new Set(teams.map((team) => team.team_id));
+  const markers = buildMarkers(data);
+  const groupMarkerIds = markers
+    .map((marker) => marker.id)
+    .filter((markerId) => markerId !== 'female');
 
   const sortedProblems = [...data.problem].sort((a, b) => a.num - b.num);
   const problemIdToAliasMap = new Map<number, string>();
@@ -480,7 +640,6 @@ export async function run(source: string, options: CSGRankOutrankRunOptions = {}
     problemIdToAliasMap.set(problem.problem_id, numberToAlphabet(index));
   });
 
-  const [ratioGold, ratioSilver, ratioBronze] = parseAwardRatios(data);
   const contest: srk.Contest = {
     title: {
       'zh-CN': data.contest.title,
@@ -512,61 +671,78 @@ export async function run(source: string, options: CSGRankOutrankRunOptions = {}
       }
       return srkProblem;
     }),
-    contributors: ['algoUX (https://algoux.org)'],
+    contributors: ['CCPCOJ (https://cpc.csgrandeur.cn/outrank)', 'algoUX (https://algoux.org)'],
+    markers,
     useICPCPreset: true,
     icpcPresetOptions: {
-      mainRankSeriesRule: {
-        ratio: {
-          value: [ratioGold, ratioSilver, ratioBronze],
-          denominator: 'scored',
-        },
-      },
+      mainRankSeriesRule: makeMainRankSeriesRule(data),
       sorterTimePrecision: 's',
       sorterRankingTimePrecision: 'min',
     },
   });
 
   generator.setMembers(
-    data.team
-      .filter((team) => team.team_id && team.name)
-      .map((team) => {
-        const user: srk.User = {
-          id: team.team_id,
-          name: makeUserName(team),
-          organization: team.school,
-          location: team.room,
-          teamMembers: [
-            ...splitNamesString(team.tmember).map((member) => ({
-              name: member,
-            })),
-            ...splitNamesString(team.coach).map((coach) => ({ name: `${coach} (教练)` })),
-          ],
-          official: team.tkind !== 2,
-          markers: team.tkind === 1 ? ['female'] : undefined,
-        };
-        if (team.school) {
-          const avatar = avatarByOrganization.get(team.school);
-          if (avatar) {
-            user.avatar = avatar;
-          }
+    teams.map((team) => {
+      const user: srk.User = {
+        id: team.team_id,
+        name: makeUserName(team),
+        organization: team.school,
+        location: team.room,
+        teamMembers: [
+          ...splitNamesString(team.tmember).map((member) => ({
+            name: member,
+          })),
+          ...splitNamesString(team.coach).map((coach) => ({ name: `${coach} (教练)` })),
+        ],
+        official: team.tkind !== 2,
+        markers: buildUserMarkers(team, groupMarkerIds),
+      };
+      if (team.school) {
+        const avatar = avatarByOrganization.get(team.school);
+        if (avatar) {
+          user.avatar = avatar;
         }
-        return user;
-      }),
+      }
+      return user;
+    }),
   );
 
+  const skippedUnknownTeamIds = new Map<string, number>();
+  const skippedUnknownProblemIds = new Map<number, number>();
   const solutions = data.solution
     .filter(isIncludedSolution)
-    .map((solution) => ({
-      userId: userIdFromSolutionTeamId(solution.team_id),
-      problemIndexOrAlias: problemIdToAliasMap.get(solution.problem_id)!,
-      result: convertCSGSolutionResult(solution.result),
-      time: [
-        getDateFromStr(solution.in_date, timezoneName).diff(contestStart, 'seconds'),
-        's',
-      ] as srk.TimeDuration,
-      solutionId: solution.solution_id,
-    }))
-    .filter((solution) => !!solution.problemIndexOrAlias)
+    .flatMap((solution) => {
+      const userId = resolveSolutionUserId(solution.team_id, teamIds);
+      if (!userId) {
+        skippedUnknownTeamIds.set(
+          solution.team_id,
+          (skippedUnknownTeamIds.get(solution.team_id) ?? 0) + 1,
+        );
+        return [];
+      }
+
+      const problemIndexOrAlias = problemIdToAliasMap.get(solution.problem_id);
+      if (!problemIndexOrAlias) {
+        skippedUnknownProblemIds.set(
+          solution.problem_id,
+          (skippedUnknownProblemIds.get(solution.problem_id) ?? 0) + 1,
+        );
+        return [];
+      }
+
+      return [
+        {
+          userId,
+          problemIndexOrAlias,
+          result: convertCSGSolutionResult(solution.result),
+          time: [
+            getDateFromStr(solution.in_date, timezoneName).diff(contestStart, 'seconds'),
+            's',
+          ] as srk.TimeDuration,
+          solutionId: solution.solution_id,
+        },
+      ];
+    })
     .sort((a, b) => {
       if (a.time[0] !== b.time[0]) return a.time[0] - b.time[0];
       return a.solutionId - b.solutionId;
@@ -575,6 +751,19 @@ export async function run(source: string, options: CSGRankOutrankRunOptions = {}
   applyFirstBloodBySolutionOrder(solutions);
 
   generator.setSolutions(solutions.map(({ solutionId: _solutionId, ...solution }) => solution));
+
+  if (skippedUnknownTeamIds.size > 0) {
+    console.warn(
+      'Skipped solutions with unknown team ids:',
+      Object.fromEntries(skippedUnknownTeamIds),
+    );
+  }
+  if (skippedUnknownProblemIds.size > 0) {
+    console.warn(
+      'Skipped solutions with unknown problem ids:',
+      Object.fromEntries(skippedUnknownProblemIds),
+    );
+  }
 
   const ignoredResultCounts = data.solution
     .filter((s) => [-1, 0, 1, 2, 3, 11, 12, 13, 14, 15].includes(s.result))
