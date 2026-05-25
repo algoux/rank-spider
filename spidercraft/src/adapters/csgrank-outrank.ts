@@ -117,6 +117,7 @@ interface CSGRankOutrankData {
 interface SourceContext {
   rankJsonUrl: string;
   schoolBadgeBaseUrl: string;
+  originalRanklistUrl?: string;
   bannerUrl?: string;
   bannerSuggestedFilename?: string;
 }
@@ -261,6 +262,7 @@ async function resolveSourceContext(source: string): Promise<SourceContext> {
     return {
       rankJsonUrl: source,
       schoolBadgeBaseUrl: new URL('/static/image/school_badge', source).href.replace(/\/+$/, ''),
+      originalRanklistUrl: source,
     };
   }
 
@@ -279,6 +281,7 @@ async function resolveSourceContext(source: string): Promise<SourceContext> {
   return {
     rankJsonUrl: new URL(apiUrl, source).href,
     schoolBadgeBaseUrl: new URL(schoolBadgeUrl, source).href.replace(/\/+$/, ''),
+    originalRanklistUrl: isHttpUrl(source) ? source : undefined,
     bannerUrl,
     bannerSuggestedFilename: bannerUrl ? filenameFromUrl(bannerUrl, 'contest-banner') : undefined,
   };
@@ -655,6 +658,14 @@ export async function run(source: string, options: CSGRankOutrankRunOptions = {}
   if (banner) {
     contest.banner = banner;
   }
+  if (context.originalRanklistUrl) {
+    contest.refLinks = [
+      {
+        title: '原始榜单',
+        link: context.originalRanklistUrl,
+      },
+    ];
+  }
 
   const generator = new UniversalSrkGenerator();
   generator.init({
@@ -671,7 +682,7 @@ export async function run(source: string, options: CSGRankOutrankRunOptions = {}
       }
       return srkProblem;
     }),
-    contributors: ['CCPCOJ (https://cpc.csgrandeur.cn/outrank)', 'algoUX (https://algoux.org)'],
+    contributors: ['algoUX (https://algoux.org)'],
     markers,
     useICPCPreset: true,
     icpcPresetOptions: {
