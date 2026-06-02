@@ -148,6 +148,8 @@ interface NowcoderStatusListData {
   basicInfo: NowcoderStatusListBasicInfo;
 }
 
+type NowcoderSolutionResult = Exclude<srk.SolutionResultFull, null>;
+
 async function fetchJsonAPI<T>(
   url: string,
   label: string,
@@ -253,6 +255,77 @@ interface UserSubmissionsFetchResult {
   truncated: boolean;
   /** 该用户在比赛内的总提交数（来自 basicInfo.statusCount，无法获取时为 -1） */
   totalCount: number;
+  /** 是否因为用户名包含单引号而使用拆分搜索 */
+  splitSearch: boolean;
+  /** 被 API 截断的搜索词；splitSearch=true 时代表搜索词结果可能截断 */
+  truncatedSearchUserNames: string[];
+}
+
+export function buildNowcoderStatusListSearchUserNames(userName: string): string[] {
+  if (!userName.includes("'")) {
+    return [userName];
+  }
+
+  const seen = new Set<string>();
+  const searchUserNames: string[] = [];
+  for (const part of userName.split("'")) {
+    if (part.length === 0 || seen.has(part)) {
+      continue;
+    }
+    seen.add(part);
+    searchUserNames.push(part);
+  }
+  return searchUserNames;
+}
+
+export function collectExactUserSubmissions<
+  T extends Pick<NowcoderStatusListItem, 'submissionId' | 'userId' | 'userName'>,
+>(submissions: T[], userId: number, userName: string): T[] {
+  const bySubmissionId = new Map<number, T>();
+  for (const sub of submissions) {
+    if (sub.userId !== userId || sub.userName !== userName) {
+      continue;
+    }
+    bySubmissionId.set(sub.submissionId, sub);
+  }
+  return Array.from(bySubmissionId.values()).sort(
+    (a, b) => a.submissionId - b.submissionId,
+  );
+}
+
+export function resolveNowcoderSolutionResult(
+  statusResult: unknown,
+  submissionResult: NowcoderSolutionResult,
+  firstBloodSubmissionId: number | undefined,
+  submissionId: number,
+): NowcoderSolutionResult {
+  if (
+    statusResult === 'FB' &&
+    submissionResult === 'AC' &&
+    firstBloodSubmissionId === submissionId
+  ) {
+    return 'FB';
+  }
+  return submissionResult;
+}
+
+function firstBloodSubmissionKey(userId: string | number, problemId: number): string {
+  return `${userId}:${problemId}`;
+}
+
+function buildFirstBloodSubmissionIdMap(rankRows: NowcoderRankRow[]): Map<string, number> {
+  const firstBloodSubmissionIds = new Map<string, number>();
+  for (const row of rankRows) {
+    for (const item of row.scoreList) {
+      if (item.accepted && item.firstBlood && item.submissionId > 0) {
+        firstBloodSubmissionIds.set(
+          firstBloodSubmissionKey(row.uid, item.problemId),
+          item.submissionId,
+        );
+      }
+    }
+  }
+  return firstBloodSubmissionIds;
 }
 
 async function fetchUserSubmissionsViaApi(
@@ -263,43 +336,66 @@ async function fetchUserSubmissionsViaApi(
   const all: NowcoderStatusListItem[] = [];
   let truncated = false;
   let totalCount = -1;
+  const searchUserNames = buildNowcoderStatusListSearchUserNames(user.name);
+  const splitSearch = searchUserNames.length !== 1 || searchUserNames[0] !== user.name;
+  const truncatedSearchUserNames: string[] = [];
 
-  for (let page = 1; page <= STATUS_LIST_MAX_PAGES; page++) {
-    const url = `${BASE_URL}/acm-heavy/acm/contest/status-list?token=&id=${cid}&page=${page}&pageSize=${STATUS_LIST_PAGE_SIZE}&orderType=ASC&orderBy=submitTime&searchUserName=${encodeURIComponent(
-      user.name,
-    )}&_=${Date.now()}`;
-    const data = await fetchJsonAPI<NowcoderStatusListData>(
-      url,
-      `status-list user="${user.name}" page=${page}`,
-    );
+  for (const searchUserName of searchUserNames) {
+    for (let page = 1; page <= STATUS_LIST_MAX_PAGES; page++) {
+      const url = `${BASE_URL}/acm-heavy/acm/contest/status-list?token=&id=${cid}&page=${page}&pageSize=${STATUS_LIST_PAGE_SIZE}&orderType=ASC&orderBy=submitTime&searchUserName=${encodeURIComponent(
+        searchUserName,
+      )}&_=${Date.now()}`;
+      const data = await fetchJsonAPI<NowcoderStatusListData>(
+        url,
+        splitSearch
+          ? `status-list user="${user.name}" search="${searchUserName}" page=${page}`
+          : `status-list user="${user.name}" page=${page}`,
+      );
 
-    if (page === 1) {
-      totalCount = data.basicInfo?.statusCount ?? -1;
-      const pageCountByApi = data.basicInfo?.pageCount ?? 0;
-      if (
-        (totalCount > 0 && totalCount > STATUS_LIST_MAX_RECORDS) ||
-        pageCountByApi > STATUS_LIST_MAX_PAGES
-      ) {
-        truncated = true;
+      if (page === 1) {
+        const statusCount = data.basicInfo?.statusCount ?? -1;
+        const pageCountByApi = data.basicInfo?.pageCount ?? 0;
+        if (!splitSearch) {
+          totalCount = statusCount;
+        }
+        if (
+          (statusCount > 0 && statusCount > STATUS_LIST_MAX_RECORDS) ||
+          pageCountByApi > STATUS_LIST_MAX_PAGES
+        ) {
+          truncated = true;
+          truncatedSearchUserNames.push(searchUserName);
+        }
       }
-    }
 
-    if (!data.data || data.data.length === 0) {
-      break;
-    }
-    // searchUserName 看似精确匹配，仍按 userId 二次过滤兜底
-    const items = data.data.filter((s) => s.userId === userIdNum);
-    all.push(...items);
+      if (!data.data || data.data.length === 0) {
+        break;
+      }
+      // searchUserName 看似精确匹配，仍按 userId 二次过滤兜底。
+      // 单引号用户名会拆词搜索，必须再按完整 userName 精确匹配。
+      const items = splitSearch
+        ? data.data.filter((s) => s.userId === userIdNum && s.userName === user.name)
+        : data.data.filter((s) => s.userId === userIdNum);
+      all.push(...items);
 
-    if (data.data.length < STATUS_LIST_PAGE_SIZE) {
-      break;
-    }
-    if (data.basicInfo?.pageCount && page >= data.basicInfo.pageCount) {
-      break;
+      if (data.data.length < STATUS_LIST_PAGE_SIZE) {
+        break;
+      }
+      if (data.basicInfo?.pageCount && page >= data.basicInfo.pageCount) {
+        break;
+      }
     }
   }
 
-  return { submissions: all, truncated, totalCount };
+  const submissions = splitSearch
+    ? collectExactUserSubmissions(all, userIdNum, user.name)
+    : all;
+  return {
+    submissions,
+    truncated,
+    totalCount: splitSearch ? submissions.length : totalCount,
+    splitSearch,
+    truncatedSearchUserNames,
+  };
 }
 
 async function fetchAndFillSolutionsViaApi(
@@ -308,6 +404,7 @@ async function fetchAndFillSolutionsViaApi(
   contestEndTime: number,
   rows: srk.RanklistRow[],
   problems: NowcoderProblemData[],
+  firstBloodSubmissionIds: Map<string, number>,
   concurrency: number,
 ): Promise<void> {
   const problemIdToIndex = new Map<number, number>();
@@ -335,9 +432,17 @@ async function fetchAndFillSolutionsViaApi(
       });
       if (res.truncated) {
         truncatedUsers++;
-        console.warn(
-          `WARN: user ${row.user.id}/${row.user.name} has totalCount=${res.totalCount} submissions in this contest (>${STATUS_LIST_MAX_RECORDS} limit). Solutions are truncated to first ${STATUS_LIST_MAX_RECORDS}.`,
-        );
+        if (res.splitSearch) {
+          console.warn(
+            `WARN: user ${row.user.id}/${row.user.name} contains single quote; search term result may be truncated before exact userName filtering (terms=${res.truncatedSearchUserNames
+              .map((name) => JSON.stringify(name))
+              .join(', ')}). Solutions may be incomplete.`,
+          );
+        } else {
+          console.warn(
+            `WARN: user ${row.user.id}/${row.user.name} has totalCount=${res.totalCount} submissions in this contest (>${STATUS_LIST_MAX_RECORDS} limit). Solutions are truncated to first ${STATUS_LIST_MAX_RECORDS}.`,
+          );
+        }
       }
 
       let userAdds = 0;
@@ -361,8 +466,17 @@ async function fetchAndFillSolutionsViaApi(
         if (result === null) {
           continue;
         }
+        const firstBloodSubmissionId = firstBloodSubmissionIds.get(
+          firstBloodSubmissionKey(row.user.id, sub.problemId),
+        );
+        const solutionResult = resolveNowcoderSolutionResult(
+          status.result,
+          result,
+          firstBloodSubmissionId,
+          sub.submissionId,
+        );
         const sec = Math.max(0, Math.floor((sub.submitTime - contestBeginTime) / 1000));
-        status.solutions.push({ result, time: [sec, 's'] });
+        status.solutions.push({ result: solutionResult, time: [sec, 's'] });
         userAdds++;
       }
       totalSolutions += userAdds;
@@ -862,6 +976,7 @@ export async function run(cid: string, options: NowcoderRunOptions = {}): Promis
     basicInfo.contestEndTime,
     rows,
     rawProblems,
+    buildFirstBloodSubmissionIdMap(rawRows),
     concurrency,
   );
 
@@ -897,8 +1012,8 @@ export async function run(cid: string, options: NowcoderRunOptions = {}): Promis
     icpcPresetOptions: {
       sorterNoPenaltyResults: ['FB', 'AC', '?', 'NOUT', 'CE', 'UKE', null],
       mainRankSeriesRule: { count: { value: [0, 0, 0] } },
-      sorterTimePrecision: 'min',
-      sorterRankingTimePrecision: 'min',
+      // sorterTimePrecision: 's',
+      // sorterRankingTimePrecision: 's',
     },
     remarks: {
       'zh-CN': '这个榜单缺失奖牌数据，如果您有该比赛的原始榜单或获奖名单，欢迎联系我们补充数据。',
