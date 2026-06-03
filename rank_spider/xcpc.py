@@ -264,22 +264,23 @@ class Parse:
         self.gold, self.silver, self.bronze = 0, 0, 0
         ccpcFlag = False
         toRemarks = True
-        if type(self.config.get('medal')) is dict and self.config['medal'].get('official') is not None:
-            self.gold = self.config['medal']['official']['gold']
-            self.silver = self.config['medal']['official']['silver']
-            self.bronze = self.config['medal']['official']['bronze']
+        medal_config = self.config.get('medal')
+        if type(medal_config) is dict and medal_config.get('official') is not None:
+            self.gold = medal_config['official']['gold']
+            self.silver = medal_config['official']['silver']
+            self.bronze = medal_config['official']['bronze']
             toRemarks = False
-        elif type(self.config.get('medal')) is str:
-            if self.config.get('medal') == 'CCPC' or self.config.get('medal') == 'ccpc':
+        elif type(medal_config) is str:
+            if medal_config == 'CCPC' or medal_config == 'ccpc':
                 self.gold = 0.1
                 self.silver = 0.2
                 self.bronze = 0.3
                 ccpcFlag = True
                 toRemarks = False
-        elif type(self.config.get('medal')) is dict and self.config['medal'].get('all') is not None:
-            self.gold = self.config['medal']['all']['gold']
-            self.silver = self.config['medal']['all']['silver']
-            self.bronze = self.config['medal']['all']['bronze']
+        elif type(medal_config) is dict and medal_config.get('all') is not None:
+            self.gold = medal_config['all']['gold']
+            self.silver = medal_config['all']['silver']
+            self.bronze = medal_config['all']['bronze']
             toRemarks = False
         else:
             self.gold = 0
@@ -306,27 +307,28 @@ class Parse:
             }
         
         anotherSeries = []
-        if len(markers) > 0:
-            if type(self.config.get('medal')) is dict and self.config['medal'].get('official') is None:
-                for key,value in self.config['medal'].items():
-                    if type(value) is dict and value.get('gold') is not None and value.get('silver') is not None and value.get('bronze') is not None:
-                        title = None
-                        for marker in markers:
-                            if marker.marker['id'] == key:
-                                title = marker.marker['label'] + '#'
-                                break
-                        if title is None:
-                            continue
-                        rule = {
-                            "preset": "ICPC",
-                            "options": {
-                                "count": {"value": [value['gold'], value['silver'], value['bronze']]},
-                                "filter": {"byMarker": key}
-                            }
-                        }
-                        anotherSeries.append(rank3.Series(title=title, segments=[('金奖', rank3.Style_Gold), ('银奖', rank3.Style_Silver), ('铜奖', rank3.Style_Bronze)], rule=rule))
-                    else:
+        if len(markers) > 0 and type(medal_config) is dict:
+            for key, value in medal_config.items():
+                if key in ['official', 'all']:
+                    continue
+                if type(value) is dict and value.get('gold') is not None and value.get('silver') is not None and value.get('bronze') is not None:
+                    title = None
+                    for marker in markers:
+                        if marker.marker['id'] == key:
+                            title = marker.marker['label'] + '#'
+                            break
+                    if title is None:
                         continue
+                    rule = {
+                        "preset": "ICPC",
+                        "options": {
+                            "count": {"value": [value['gold'], value['silver'], value['bronze']]},
+                            "filter": {"byMarker": key}
+                        }
+                    }
+                    anotherSeries.append(rank3.Series(title=title, segments=[('金奖', rank3.Style_Gold), ('银奖', rank3.Style_Silver), ('铜奖', rank3.Style_Bronze)], rule=rule))
+                else:
+                    continue
 
         offical_rank = rank3.Series(title='#', segments=[('金奖', rank3.Style_Gold), ('银奖', rank3.Style_Silver), ('铜奖', rank3.Style_Bronze)], rule=icpc_rule)
         school_rank = rank3.Series(title='S#', rule={"preset": "UniqByUserField", "options": {"field": "organization", "includeOfficialOnly": True}})
@@ -344,7 +346,7 @@ class Parse:
         all_markers = []
         colors = [ 'blue', 'green', 'yellow', 'orange', 'red', 'purple']
         index = 0
-        femalePattern = r'女队'
+        femalePattern = r'女队|女生|女子'
         starPattern = r'打星'
         for key, value in self.group.items():
             if key == 'unofficial':
@@ -353,14 +355,15 @@ class Parse:
                 continue
             if re.search(starPattern, value):
                 continue
-            is_female = re.search(femalePattern, value) or (isinstance(key, str) and 'female' in key)
+            key_lower = str(key).lower()
+            is_female = re.search(femalePattern, str(value)) or key_lower in ['female', 'girl'] or 'female' in key_lower or 'girl' in key_lower
             style = 'pink' if is_female else colors[index % len(colors)]
             marker = rank3.Marker(key, value, style)
             all_markers.append(marker)
             if not is_female:
                 index += 1
         # 拆分女队相关和普通 marker
-        female_markers = [m for m in all_markers if ('female' in str(m.marker['id']).lower() or re.search(femalePattern, str(m.marker['label'])))]
+        female_markers = [m for m in all_markers if ('female' in str(m.marker['id']).lower() or 'girl' in str(m.marker['id']).lower() or re.search(femalePattern, str(m.marker['label'])))]
         normal_markers = [m for m in all_markers if m not in female_markers]
         return normal_markers + female_markers
 
@@ -395,6 +398,16 @@ class Parse:
             # 判断是否为正式队伍的逻辑
             original_official = v.get('official', 0) == 1
             group = v.get('group', [])
+            if group is None:
+                group = []
+            if not isinstance(group, list):
+                group = [group]
+            team_markers = v.get('markers', [])
+            if team_markers is None:
+                team_markers = []
+            if not isinstance(team_markers, list):
+                team_markers = [team_markers]
+            group = group + [marker for marker in team_markers if marker not in group]
             group_unofficial = 'unofficial' in group
 
             explicit_official = v.get('official', False)
@@ -705,9 +718,9 @@ def call_rank(path: str, name: str):
         json.dump(r.result(), file, ensure_ascii=False)
 
 def once():
-    call_rank('/icpc/48th/nanjing', 'temp/nanjing.srk.json')
+    call_rank('/provincial-contest/2026/sichuan', 'temp/sichuan.srk.json')
 
 
 if __name__ == '__main__':
-    main()
-    # once()
+    # main()
+    once()
