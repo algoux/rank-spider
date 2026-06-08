@@ -16,3 +16,5 @@ rank_spider/ccpc/*
 rank_spider/province/*
 rank_spider/images/*
 debug/
+rank_spider/__pycache__/
+rank_spider/temp/
