@@ -282,7 +282,7 @@ class Rank:
     def result(self) -> Dict[str, Any]:
         rank = {
             'type': 'general',
-            'version': '0.3.9',
+            'version': '0.3.12',
             'contest': self.contest,
             'problems': self.problems,
             'series': self.series,
