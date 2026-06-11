@@ -71,7 +71,7 @@ class Contest:
 
 
 class Problem:
-    def __init__(self, alias: str, statistics: Tuple[int, int] = None, style: Tuple[str, str] = None, **kwargs) -> None:
+    def __init__(self, alias: str, statistics: Tuple[int, int] = None, style: Tuple[str, ...] = None, **kwargs) -> None:
         '''
             alias: 题号
             statistics: 题目统计数据 (通过提交数, 总提交数)【可选】
@@ -88,8 +88,9 @@ class Problem:
         if style is not None:
             self.problem['style'] = {
                 'backgroundColor': style[0],
-                'textColor': style[1],
             }
+            if len(style) > 1 and style[1] is not None:
+                self.problem['style']['textColor'] = style[1]
         if kwargs.get('title') is not None:
             self.problem['title'] = kwargs.get('title')
         if kwargs.get('link') is not None:
