@@ -313,10 +313,8 @@ class Parse:
         problems = []
         f = 1
         for i, v in enumerate(self.problem_id_list):
-            style = None
             if self.config.get("balloon_color") is not None:
                 color = self.config["balloon_color"][i]
-                style = (color["background_color"], color["color"])
                 if i <= 12 and color["background_color"] != srkDefaultBallonColors[i]:
                     f = 0
                     break
@@ -325,7 +323,7 @@ class Parse:
             style = None
             if self.config.get("balloon_color") is not None:
                 color = self.config["balloon_color"][i]
-                style = (color["background_color"], color["color"])
+                style = (color["background_color"],)
             if f == 1:
                 style = None
             problems.append(rank3.Problem(v, self.statistics[i], style))
@@ -948,7 +946,7 @@ def call_rank(path: str, name: str):
 
 
 def once():
-    call_rank("/ccpc/12th/guizhou-invitational/", "temp/guizhou.srk.json")
+    call_rank("/provincial-contest/2024/henan-icpc/", "temp/henan.srk.json")
 
 
 if __name__ == "__main__":
