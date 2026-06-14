@@ -151,6 +151,50 @@ export interface PTARankingTeamSubmissions {
   teamInfo: PTATeamInfo;
 }
 
+const PTA_TEAM_SUBMISSIONS_PAGE_LIMIT = 500;
+
+type FetchPTATeamSubmissionsPage = (path: string) => Promise<PTARankingTeamSubmissions>;
+
+export async function fetchPTATeamSubmissions(
+  cid: string,
+  teamFid: string,
+  fetchPage: FetchPTATeamSubmissionsPage = async (path) =>
+    (await req.get<PTARankingTeamSubmissions>(path)).data,
+  limit = PTA_TEAM_SUBMISSIONS_PAGE_LIMIT,
+): Promise<PTARankingTeamSubmissions> {
+  const submissions: PTASubmission[] = [];
+  let page = 0;
+  let firstPage: PTARankingTeamSubmissions | undefined;
+  let lastPage: PTARankingTeamSubmissions | undefined;
+
+  while (true) {
+    const pageData = await fetchPage(
+      `/${cid}/xcpc-rankings/public/team-submissions?team_fid=${encodeURIComponent(
+        teamFid,
+      )}&limit=${limit}&page=${page}`,
+    );
+    firstPage ??= pageData;
+    lastPage = pageData;
+    submissions.push(...pageData.submissions);
+
+    if (pageData.total < limit) {
+      break;
+    }
+    page += 1;
+  }
+
+  if (!lastPage) {
+    throw new Error(`Failed to fetch team submissions for ${teamFid}`);
+  }
+
+  return {
+    ...lastPage,
+    total: submissions.length,
+    submissions,
+    teamInfo: firstPage?.teamInfo ?? lastPage.teamInfo,
+  };
+}
+
 function convertPTASolutionResult(result: string): srk.SolutionResultFull {
   switch (result) {
     case 'SKIPPED':
@@ -215,12 +259,10 @@ async function fetchRankData(cid: string) {
             console.log(
               `Fetching submissions of team ${teamFid} (${index + 1}/${teamFids.length})`,
             );
-            const res = await req.get<PTARankingTeamSubmissions>(
-              `/${cid}/xcpc-rankings/public/team-submissions?team_fid=${teamFid}`,
-            );
+            const submissions = await fetchPTATeamSubmissions(cid, teamFid);
             await sleep(2000);
-            teamSubmissionsMap.set(teamFid, res.data);
-            return res.data;
+            teamSubmissionsMap.set(teamFid, submissions);
+            return submissions;
           },
           {
             retries: 5,
