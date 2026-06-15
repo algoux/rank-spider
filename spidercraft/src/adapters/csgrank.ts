@@ -193,7 +193,7 @@ export async function run(cid: string) {
           ...splitNamesString(team.tmember).map((member) => ({
             name: member,
           })),
-          ...splitNamesString(team.coach).map((coach) => ({ name: `${coach} (教练)` })),
+          ...splitNamesString(team.coach).map((coach) => ({ name: coach, role: 'coach' })),
         ],
         official: team.tkind !== 2,
         marker: team.tkind === 1 ? 'female' : undefined,
