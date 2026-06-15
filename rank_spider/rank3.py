@@ -126,7 +126,7 @@ class Marker:
 
 
 class User:
-    def __init__(self, name: str, id: str = None, organization: str = None, members: List[str] = None, official: bool = None, markers: List[Marker] = None, location: str = None, avatar: str = None, photo: str = None) -> None:
+    def __init__(self, name: str, id: str = None, organization: str = None, members: List[Any] = None, official: bool = None, markers: List[Marker] = None, location: str = None, avatar: str = None, photo: str = None) -> None:
         '''
             name: 用户名或队伍名
             id: 队伍 ID【可选】
@@ -146,7 +146,13 @@ class User:
         if members is not None:
             team = []
             for m in members:
-                team.append({'name': m})
+                if isinstance(m, dict):
+                    member = {'name': m.get('name')}
+                    if m.get('role') is not None:
+                        member['role'] = m.get('role')
+                    team.append(member)
+                else:
+                    team.append({'name': m})
             self.user['teamMembers'] = team
         if official is not None:
             self.user['official'] = official
@@ -283,7 +289,7 @@ class Rank:
     def result(self) -> Dict[str, Any]:
         rank = {
             'type': 'general',
-            'version': '0.3.12',
+            'version': '0.3.13',
             'contest': self.contest,
             'problems': self.problems,
             'series': self.series,

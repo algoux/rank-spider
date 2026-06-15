@@ -188,6 +188,65 @@ class Parse:
         self.org = org
         self.__calculate()
 
+    def _team_items(self):
+        if isinstance(self.teams, dict):
+            return self.teams.items()
+        if isinstance(self.teams, list):
+            return [
+                (team.get("id", str(i)), team) for i, team in enumerate(self.teams)
+            ]
+        raise TypeError(f"Unsupported teams data type: {type(self.teams)}")
+
+    def _team_group_ids(self, team: Dict) -> List:
+        group = team.get("group", [])
+        if group is None:
+            group = []
+        if not isinstance(group, list):
+            group = [group]
+
+        team_markers = team.get("markers", [])
+        if team_markers is None:
+            team_markers = []
+        if not isinstance(team_markers, list):
+            team_markers = [team_markers]
+
+        return group + [marker for marker in team_markers if marker not in group]
+
+    def _star_group_ids(self) -> set:
+        starPattern = r"打星"
+        star_group_ids = {"unofficial"}
+        for key, value in self.group.items():
+            if re.search(starPattern, str(value)):
+                star_group_ids.add(key)
+        return star_group_ids
+
+    def _is_star_team(self, team: Dict, group: Optional[List] = None) -> bool:
+        if team.get("unofficial", False):
+            return True
+        group = self._team_group_ids(team) if group is None else group
+        star_group_ids = self._star_group_ids()
+        return any(group_id in star_group_ids for group_id in group)
+
+    def _official_team_id_set(self) -> set:
+        return {
+            team_id
+            for team_id, team in self._team_items()
+            if not self._is_star_team(team)
+        }
+
+    def _group_team_id_set(self, group_id: str) -> set:
+        return {
+            team_id
+            for team_id, team in self._team_items()
+            if group_id in self._team_group_ids(team)
+        }
+
+    def _has_special_official_group(self) -> bool:
+        return (
+            "official" in self.group
+            and self._group_team_id_set("official") == self._official_team_id_set()
+        )
+
     def _extract_localized_name(self, value) -> str:
         if value is None:
             return ""
@@ -334,7 +393,12 @@ class Parse:
         ccpcFlag = False
         toRemarks = True
         medal_config = self.config.get("medal")
-        if type(medal_config) is dict and medal_config.get("official") is not None:
+        special_official_group = self._has_special_official_group()
+        if (
+            special_official_group
+            and type(medal_config) is dict
+            and medal_config.get("official") is not None
+        ):
             self.gold = medal_config["official"]["gold"]
             self.silver = medal_config["official"]["silver"]
             self.bronze = medal_config["official"]["bronze"]
@@ -377,7 +441,7 @@ class Parse:
         anotherSeries = []
         if len(markers) > 0 and type(medal_config) is dict:
             for key, value in medal_config.items():
-                if key in ["official", "all"]:
+                if key == "all" or (key == "official" and special_official_group):
                     continue
                 if (
                     type(value) is dict
@@ -416,6 +480,7 @@ class Parse:
                             rule=rule,
                         )
                     )
+                    toRemarks = False
                 else:
                     continue
 
@@ -448,12 +513,13 @@ class Parse:
         index = 0
         femalePattern = r"女队|女生|女子"
         starPattern = r"打星"
+        special_official_group = self._has_special_official_group()
         for key, value in self.group.items():
             if key == "unofficial":
                 continue
-            if key == "official":
+            if key == "official" and special_official_group:
                 continue
-            if re.search(starPattern, value):
+            if re.search(starPattern, str(value)):
                 continue
             key_lower = str(key).lower()
             is_female = (
@@ -482,18 +548,8 @@ class Parse:
 
     def rows(self, markers) -> List[rank3.Row]:
         data = []
-
-        # 处理 teams 数据格式兼容性：支持字典和列表两种格式
-        if isinstance(self.teams, dict):
-            # 旧格式：字典 {"J12": {"team_id": "J12", "name": "Echo", ...}, ...}
-            teams_items = self.teams.items()
-        elif isinstance(self.teams, list):
-            # 新格式：列表 [{"id": "team001", "name": {...}, ...}, ...]
-            teams_items = [
-                (team.get("id", str(i)), team) for i, team in enumerate(self.teams)
-            ]
-        else:
-            raise TypeError(f"Unsupported teams data type: {type(self.teams)}")
+        teams_items = self._team_items()
+        special_official_group = self._has_special_official_group()
 
         for k, v in teams_items:
             u_markers = []
@@ -510,31 +566,15 @@ class Parse:
                         coach_name = self._extract_localized_name(coach_item)
                         if coach_name:
                             coaches.append(coach_name)
-            # 判断是否为正式队伍的逻辑
-            original_official = v.get("official", 0) == 1
-            group = v.get("group", [])
-            if group is None:
-                group = []
-            if not isinstance(group, list):
-                group = [group]
-            team_markers = v.get("markers", [])
-            if team_markers is None:
-                team_markers = []
-            if not isinstance(team_markers, list):
-                team_markers = [team_markers]
-            group = group + [marker for marker in team_markers if marker not in group]
-            group_unofficial = "unofficial" in group
-
-            explicit_official = v.get("official", False)
-            explicit_unofficial = v.get("unofficial", group_unofficial)
-
-            official = original_official or explicit_official or not explicit_unofficial
+            # official=true 表示全体队伍排除打星队伍，不再由 official 分组直接决定。
+            group = self._team_group_ids(v)
+            official = not self._is_star_team(v, group)
 
             # group字段内的marker，只添加 markers 里存在的 id
             for t in group:
                 if (
                     t is not None
-                    and t != "official"
+                    and not (t == "official" and special_official_group)
                     and t != "unofficial"
                     and t != "girl"
                 ):
@@ -595,11 +635,19 @@ class Parse:
                     if member is not None and str(member).lower() != "null":
                         member_name = self._extract_localized_name(member)
                         if member_name:
-                            processed_members.append(member_name)
+                            processed_member = {"name": member_name}
+                            if (
+                                isinstance(member, dict)
+                                and member.get("role") is not None
+                            ):
+                                processed_member["role"] = member.get("role")
+                            processed_members.append(processed_member)
                 members = processed_members
-            if len(coaches) > 0 and type(members) is list:
+            if len(coaches) > 0:
+                if not isinstance(members, list):
+                    members = []
                 for coach in coaches:
-                    members.append(f"{coach} (教练)")
+                    members.append({"name": coach, "role": "coach"})
 
             orgName = self._resolve_team_organization(v)
 
@@ -946,7 +994,7 @@ def call_rank(path: str, name: str):
 
 
 def once():
-    call_rank("/provincial-contest/2024/henan-icpc/", "temp/henan.srk.json")
+    call_rank("/provincial-contest/2025/liaoning/", "temp/ln.srk.json")
 
 
 if __name__ == "__main__":
