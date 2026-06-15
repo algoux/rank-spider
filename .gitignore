@@ -18,3 +18,8 @@ rank_spider/images/*
 debug/
 rank_spider/__pycache__/
 rank_spider/temp/
+spidercraft/province/*
+spidercraft/ccpc/*
+spidercraft/icpc/*
+spidercraft/temp/*
+spidercraft/images/*
