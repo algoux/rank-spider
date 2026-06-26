@@ -1,6 +1,8 @@
 import json
 import requests
 import rank
+import image_downloader
+from xcpc import _prepare_assets
 
 from typing import Dict, List
 
@@ -35,7 +37,8 @@ class Parse:
         end_time = self.config.get('end_time')
         frozen_time = self.config.get('frozen_time', 0)
         link = self.config.get('contest_link', None)
-        banner = self.config.get('banner', None)
+        banner = self.config.get('_srk_banner', self.config.get('banner', None))
+        banner_link = self.config.get('_srk_banner_link')
 
         # 兼容毫秒级或秒级时间戳
         if start_time is not None and start_time > 946684800000:
@@ -63,7 +66,17 @@ class Parse:
         except Exception:
             frozen_hours = 0
 
-        return rank.Contest(self.config['contest_name'], start_time, duration, frozen_hours, link, banner)
+        processed_banner = None
+        if banner is not None:
+            if isinstance(banner, str):
+                processed_banner = {'image': banner, 'link': banner_link} if banner_link else banner
+            elif isinstance(banner, dict):
+                original_link = image_downloader.get_srk_image_without_download(banner)
+                banner_link = banner_link or image_downloader.image_link(banner)
+                if original_link:
+                    processed_banner = {'image': original_link, 'link': banner_link} if banner_link else original_link
+
+        return rank.Contest(self.config['contest_name'], start_time, duration, frozen_hours, link, processed_banner)
 
     def problems(self) -> List[rank.Problem]:
         problems = []
@@ -145,18 +158,18 @@ class Parse:
         return rows
 
     def __calculate(self) -> None:
-        frist_blood = [0 for i in self.config['problem_id']]
+        frist_blood = [None for i in self.config['problem_id']]
         for v in self.runs:
             if self.statuses.get(str(v['team_id'])) is None:
                 self.statuses[str(v['team_id'])] = [rank.Status() for i in self.config['problem_id']]
             status = self.statuses[str(v['team_id'])][v['problem_id']]
-            if status.result == rank.SR_Accepted:
+            if status.result in [rank.SR_Accepted, rank.SR_FirstBlood]:
                 continue
             
             # 默认提交状态为：incorrect
             result = rank.SR_Rejected
             if v['status'] == 'correct':
-                if frist_blood[v['problem_id']] == 0 or frist_blood[v['problem_id']] == v['timestamp']:
+                if frist_blood[v['problem_id']] is None or frist_blood[v['problem_id']] == v['timestamp']:
                     result = rank.SR_FirstBlood
                     frist_blood[v['problem_id']] = v['timestamp']
                 else:
@@ -206,6 +219,10 @@ def main():
         config = get(f'https://board.xcpcio.com/data{v}/config.json')
         teams = get(f'https://board.xcpcio.com/data{v}/team.json')
         runs = get(f'https://board.xcpcio.com/data{v}/run.json')
+        warnings = []
+        _prepare_assets(v, config, teams, f'icpc{k}', True, warnings)
+        for warning in warnings:
+            print(warning)
         runs.sort(key=lambda x: x['timestamp'])
         parse = Parse(config, teams, runs)
         contest = parse.contest()
@@ -221,6 +238,10 @@ def main():
         config = get(f'https://board.xcpcio.com/data{v}/config.json')
         teams = get(f'https://board.xcpcio.com/data{v}/team.json')
         runs = get(f'https://board.xcpcio.com/data{v}/run.json')
+        warnings = []
+        _prepare_assets(v, config, teams, f'ccpc{k}', True, warnings)
+        for warning in warnings:
+            print(warning)
         runs.sort(key=lambda x: x['timestamp'])
         parse = Parse(config, teams, runs)
         contest = parse.contest()
@@ -236,6 +257,10 @@ def main():
         config = get(f'https://board.xcpcio.com/data{v}/config.json')
         teams = get(f'https://board.xcpcio.com/data{v}/team.json')
         runs = get(f'https://board.xcpcio.com/data{v}/run.json')
+        warnings = []
+        _prepare_assets(v, config, teams, f'ccpc{k}', True, warnings)
+        for warning in warnings:
+            print(warning)
         runs.sort(key=lambda x: x['timestamp'])
         parse = Parse(config, teams, runs)
         contest = parse.contest()

@@ -31,7 +31,7 @@ def generate_xcpc_rank(
     Args:
         contest_path: XCPCIO board path, for example /provincial-contest/2026/sichuan.
         output_path: Output SRK JSON path, resolved relative to the current working directory.
-        download_banner: Whether to download contest banner assets into images/.
+        download_banner: Whether to download image assets into assets/.
     """
     return xcpc.generate_rank(contest_path, output_path, download_banner)
 

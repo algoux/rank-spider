@@ -10,7 +10,7 @@ program
     'XCPCIO 榜单 URL 或路径，例如 https://board.xcpcio.com/ccpc/12th/guizhou-invitational',
   )
   .option('-o, --output <file>', '输出文件路径；省略时按 Python 脚本规则自动生成')
-  .option('--no-download-banner', '不下载 banner 资源到 images/')
+  .option('--no-download-banner', '不下载图片资源到 assets/')
   .action(
     async (
       contestUrlOrPath: string,

@@ -3,6 +3,7 @@ import requests
 import rank3
 import re
 import os
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Union
 import image_downloader
 
@@ -11,6 +12,8 @@ import image_downloader
 contest_url = {}
 # url: {contest_name: name, status: v}
 unkown_contest = {}
+# Old XCPCIO online boards can collapse many accepted runs to the same earliest time.
+MAX_SAME_TIME_ONLINE_FIRST_BLOODS = 10
 
 
 def _result(
@@ -62,6 +65,139 @@ def _format_unknown_statuses(url: Optional[str]) -> Dict[str, Any]:
     }
 
 
+def _asset_alias(output_path: str) -> str:
+    filename = os.path.basename(output_path)
+    if filename.endswith(".srk.json"):
+        return filename[: -len(".srk.json")]
+    return os.path.splitext(filename)[0]
+
+
+def _prepare_image_asset(
+    image_data: Any,
+    contest_id: str,
+    filename_stem: str,
+    warnings: List[str],
+    warning_label: str,
+    download_assets: bool = True,
+    default_ext: str = "png",
+) -> Optional[str]:
+    if image_data is None:
+        return None
+
+    if download_assets:
+        image_path, ok = image_downloader.download_asset(
+            image_data,
+            contest_id,
+            filename_stem,
+            default_ext=default_ext,
+        )
+        if not ok:
+            if image_path is None:
+                warnings.append(f"{warning_label} 图片素材处理失败")
+            else:
+                warnings.append(f"{warning_label} 图片素材下载失败，已回退到远程 URL")
+        return image_path
+
+    image_path = image_downloader.get_srk_image_without_download(image_data)
+    if image_path is None and image_downloader.parse_base64_image(image_data):
+        warnings.append(
+            f"{warning_label} 是 base64 图片，已跳过；启用资源下载后可写入 assets/"
+        )
+    return image_path
+
+
+def _template_image_for_team(template: Any, team_id: Any) -> Optional[Any]:
+    if not template:
+        return None
+    team_id_str = str(team_id)
+    if isinstance(template, str):
+        return template.replace("${team_id}", team_id_str)
+    if isinstance(template, dict):
+        image = deepcopy(template)
+        if isinstance(image.get("url"), str):
+            image["url"] = image["url"].replace("${team_id}", team_id_str)
+        return image
+    return None
+
+
+def _team_items(teams: Any):
+    if isinstance(teams, dict):
+        return teams.items()
+    if isinstance(teams, list):
+        return [
+            (team.get("id", str(i)) if isinstance(team, dict) else str(i), team)
+            for i, team in enumerate(teams)
+        ]
+    return []
+
+
+def _prepare_assets(
+    path: str,
+    config: Dict,
+    teams: Any,
+    contest_id: str,
+    download_assets: bool,
+    warnings: List[str],
+) -> None:
+    banner = config.get("banner")
+    if banner is not None:
+        banner_image = _prepare_image_asset(
+            banner,
+            contest_id,
+            "banner",
+            warnings,
+            f"{path} banner",
+            download_assets,
+            "png",
+        )
+        if banner_image:
+            config["_srk_banner"] = banner_image
+            banner_link = image_downloader.image_link(banner)
+            if banner_link:
+                config["_srk_banner_link"] = banner_link
+
+    team_photo_template = None
+    if isinstance(config.get("options"), dict):
+        team_photo_template = config["options"].get("team_photo_url_template")
+
+    for team_key, team in _team_items(teams):
+        if not isinstance(team, dict):
+            continue
+
+        team_id = team.get("team_id") or team.get("id") or team_key
+        filename_id = image_downloader.safe_filename_component(team_id, "team")
+
+        avatar_source = team.get("avatar") or team.get("badge")
+        if avatar_source is not None:
+            avatar = _prepare_image_asset(
+                avatar_source,
+                contest_id,
+                f"team-{filename_id}-avatar",
+                warnings,
+                f"{path} team {team_id} avatar",
+                download_assets,
+                "png",
+            )
+            if avatar:
+                team["avatar"] = avatar
+
+        photo_source = team.get("photo")
+        if photo_source is None and not team.get("missing_photo", False):
+            photo_source = _template_image_for_team(team_photo_template, team_id)
+        if photo_source is not None:
+            photo = _prepare_image_asset(
+                photo_source,
+                contest_id,
+                f"team-{filename_id}-photo",
+                warnings,
+                f"{path} team {team_id} photo",
+                download_assets,
+                "jpg",
+            )
+            if photo:
+                team["photo"] = photo
+
+
 def set_contest_url(path: str, config):
     url = f"https://board.xcpcio.com{path}"
     contest_url[config["contest_name"]] = url
@@ -100,21 +236,216 @@ sr_results = {
 }
 
 
-srkDefaultBallonColors = [
-    "rgba(189, 14, 14, 0.7)",
-    "rgba(149, 31, 217, 0.7)",
-    "rgba(16, 32, 96, 0.7)",
-    "rgba(38, 185, 60, 0.7)",
-    "rgba(239, 217, 9, 0.7)",
-    "rgba(243, 88, 20, 0.7)",
-    "rgba(12, 76, 138, 0.7)",
-    "rgba(156, 155, 155, 0.7)",
-    "rgba(4, 154, 115, 0.7)",
-    "rgba(159, 19, 236, 0.7)",
-    "rgba(42, 197, 202, 0.7)",
-    "rgba(142, 56, 54, 0.7)",
-    "rgba(144, 238, 144, 0.7)",
+srkDefaultBallonColorPalettes = [
+    [
+        "rgba(189, 14, 14, 0.7)",
+        "rgba(149, 31, 217, 0.7)",
+        "rgba(16, 32, 96, 0.7)",
+        "rgba(38, 185, 60, 0.7)",
+        "rgba(239, 217, 9, 0.7)",
+        "rgba(243, 88, 20, 0.7)",
+        "rgba(12, 76, 138, 0.7)",
+        "rgba(156, 155, 155, 0.7)",
+        "rgba(4, 154, 115, 0.7)",
+        "rgba(159, 19, 236, 0.7)",
+        "rgba(42, 197, 202, 0.7)",
+        "rgba(142, 56, 54, 0.7)",
+        "rgba(144, 238, 144, 0.7)",
+    ],
+    [
+        "rgba(189, 14, 14, 0.7)",
+        "rgba(255, 144, 228, 0.7)",
+        "rgba(255, 255, 255, 0.7)",
+        "rgba(38, 185, 60, 0.7)",
+        "rgba(239, 217, 9, 0.7)",
+        "rgba(243, 88, 20, 0.7)",
+        "rgba(12, 76, 138, 0.7)",
+        "rgba(156, 155, 155, 0.7)",
+        "rgba(4, 154, 115, 0.7)",
+        "rgba(159, 19, 236, 0.7)",
+        "rgba(42, 197, 202, 0.7)",
+        "rgba(142, 56, 54, 0.7)",
+        "rgba(0, 0, 0, 0.7)",
+    ],
+    [
+        "rgba(189, 14, 14, 0.7)",
+        "#951FD9",
+        "rgba(255, 255, 255, 0.7)",
+        "rgba(38, 185, 60, 0.7)",
+        "rgba(239, 217, 9, 0.7)",
+        "rgba(243, 88, 20, 0.7)",
+        "rgba(12, 76, 138, 0.7)",
+        "rgba(156, 155, 155, 0.7)",
+        "rgba(4, 154, 115, 0.7)",
+        "rgba(159, 19, 236, 0.7)",
+        "rgba(42, 197, 202, 0.7)",
+        "rgba(142, 56, 54, 0.7)",
+        "rgba(0, 0, 0, 0.7)",
+    ],
+    [
+        "#dc2626",
+        "#f59e0b",
+        "#fde047",
+        "#22c55e",
+        "#5eead4",
+        "#3b82f6",
+        "#a855f7",
+        "#f472b6",
+        "#ffffff",
+        "#edc5f2",
+        "#95f4b8",
+        "#f2e7b1",
+    ],
+    [
+        "#ff3b30",
+        "#ee7528",
+        "#fde047",
+        "#00aa00",
+        "#5eead4",
+        "#1b75dc",
+        "#a855f7",
+        "#f472b6",
+        "#A52A2A",
+        "#000080",
+        "#000000",
+        "#ffffff",
+        "#f5b7b7",
+    ],
+    [
+        "#ff3b30",
+        "#ee7528",
+        "#fde047",
+        "#00aa00",
+        "#5eead4",
+        "#1b75dc",
+        "#a855f7",
+        "#f472b6",
+        "#A52A2A",
+        "#000080",
+        "#000000",
+        "#737373",
+    ],
 ]
+
+
+def _normalize_contest_timestamp_seconds(value: Any) -> float:
+    timestamp = float(value)
+    if timestamp > 946684800000:
+        return timestamp // 1000
+    return timestamp
+
+
+def _infer_run_time_unit(config: Dict, runs: List[Dict]) -> str:
+    first_timestamp = float(runs[0].get("timestamp", 0))
+    if first_timestamp / 1000 < 1:
+        return "s"
+
+    try:
+        start_time = _normalize_contest_timestamp_seconds(config.get("start_time"))
+        end_time = _normalize_contest_timestamp_seconds(config.get("end_time"))
+        contest_duration_seconds = end_time - start_time
+    except (TypeError, ValueError):
+        return "ms"
+
+    if contest_duration_seconds <= 0:
+        return "ms"
+
+    max_timestamp = max(float(run.get("timestamp", 0)) for run in runs)
+    tolerance_seconds = max(300, contest_duration_seconds * 0.01)
+    if max_timestamp <= contest_duration_seconds + tolerance_seconds:
+        return "s"
+    return "ms"
+
+
+def _is_online_contest(path: str, config: Dict) -> bool:
+    parts = [
+        path,
+        config.get("contest_name"),
+        config.get("name"),
+        config.get("title"),
+        config.get("board_name"),
+    ]
+    text = " ".join(
+        " ".join(str(v) for v in value.values())
+        if isinstance(value, dict)
+        else str(value or "")
+        for value in parts
+    )
+    return re.search(r"网络|online|preliminary", text, re.IGNORECASE) is not None
+
+
+def _time_to_milliseconds(time_value: Any) -> float:
+    if not isinstance(time_value, list) or len(time_value) < 2:
+        return float("nan")
+    try:
+        value = float(time_value[0])
+    except (TypeError, ValueError):
+        return float("nan")
+    unit = time_value[1]
+    if unit == "ms":
+        return value
+    if unit == "s":
+        return value * 1000
+    if unit == "min":
+        return value * 60 * 1000
+    if unit == "h":
+        return value * 60 * 60 * 1000
+    if unit == "d":
+        return value * 24 * 60 * 60 * 1000
+    return value
+
+
+def _set_accepted_solution_result(status: Dict, result: str) -> None:
+    solutions = status.get("solutions")
+    if not isinstance(solutions, list):
+        return
+    for solution in reversed(solutions):
+        if solution.get("result") in [rank3.SR_Accepted, rank3.SR_FirstBlood]:
+            solution["result"] = result
+            return
+
+
+def _normalize_online_first_blood(rank_object: Dict) -> None:
+    best_by_problem: Dict[int, Dict[str, Any]] = {}
+
+    for row in rank_object.get("rows", []):
+        statuses = row.get("statuses", row.get("status", []))
+        if not isinstance(statuses, list):
+            continue
+        for problem_index, status in enumerate(statuses):
+            if not isinstance(status, dict):
+                continue
+
+            if status.get("result") == rank3.SR_FirstBlood:
+                status["result"] = rank3.SR_Accepted
+            solutions = status.get("solutions")
+            if isinstance(solutions, list):
+                for solution in solutions:
+                    if solution.get("result") == rank3.SR_FirstBlood:
+                        solution["result"] = rank3.SR_Accepted
+
+            if status.get("result") != rank3.SR_Accepted:
+                continue
+            time = _time_to_milliseconds(status.get("time"))
+            if time != time:
+                continue
+
+            best = best_by_problem.get(problem_index)
+            if best is None or time < best["time"]:
+                best_by_problem[problem_index] = {
+                    "time": time,
+                    "candidates": [status],
+                }
+            elif time == best["time"]:
+                best["candidates"].append(status)
+
+    for best in best_by_problem.values():
+        candidates = best["candidates"]
+        if len(candidates) > MAX_SAME_TIME_ONLINE_FIRST_BLOODS:
+            candidates = candidates[:1]
+        for status in candidates:
+            status["result"] = rank3.SR_FirstBlood
+            _set_accepted_solution_result(status, rank3.SR_FirstBlood)
 
 
 class Parse:
@@ -192,9 +523,7 @@ class Parse:
         if isinstance(self.teams, dict):
             return self.teams.items()
         if isinstance(self.teams, list):
-            return [
-                (team.get("id", str(i)), team) for i, team in enumerate(self.teams)
-            ]
+            return [(team.get("id", str(i)), team) for i, team in enumerate(self.teams)]
         raise TypeError(f"Unsupported teams data type: {type(self.teams)}")
 
     def _team_group_ids(self, team: Dict) -> List:
@@ -203,6 +532,8 @@ class Parse:
             group = []
         if not isinstance(group, list):
             group = [group]
+        else:
+            group = list(group)
 
         team_markers = team.get("markers", [])
         if team_markers is None:
@@ -210,7 +541,25 @@ class Parse:
         if not isinstance(team_markers, list):
             team_markers = [team_markers]
 
+        if "official" in team:
+            if self._is_true_flag(team.get("official")) and "official" not in group:
+                group.append("official")
+            elif (
+                self._is_false_flag(team.get("official")) and "unofficial" not in group
+            ):
+                group.append("unofficial")
+
         return group + [marker for marker in team_markers if marker not in group]
+
+    def _is_true_flag(self, value) -> bool:
+        if isinstance(value, str):
+            return value.strip().lower() in ["1", "true", "yes"]
+        return value is True or value == 1
+
+    def _is_false_flag(self, value) -> bool:
+        if isinstance(value, str):
+            return value.strip().lower() in ["0", "false", "no"]
+        return value is False or value == 0
 
     def _star_group_ids(self) -> set:
         starPattern = r"打星"
@@ -241,11 +590,29 @@ class Parse:
             if group_id in self._team_group_ids(team)
         }
 
+    def _is_official_group_label(self, value) -> bool:
+        label = str(value).strip().lower()
+        return label in ["正式", "正式队", "正式队伍", "默认队伍组", "official"]
+
+    def _official_group_candidates(self) -> List[str]:
+        if "official" in self.group:
+            return ["official"]
+        return [
+            key
+            for key, value in self.group.items()
+            if self._is_official_group_label(value)
+        ]
+
+    def _special_official_group_ids(self) -> set:
+        official_team_ids = self._official_team_id_set()
+        return {
+            group_id
+            for group_id in self._official_group_candidates()
+            if self._group_team_id_set(group_id) == official_team_ids
+        }
+
     def _has_special_official_group(self) -> bool:
-        return (
-            "official" in self.group
-            and self._group_team_id_set("official") == self._official_team_id_set()
-        )
+        return len(self._special_official_group_ids()) > 0
 
     def _extract_localized_name(self, value) -> str:
         if value is None:
@@ -311,19 +678,44 @@ class Parse:
             org_name = self._extract_org_name(team.get("organization"))
         return org_name or None
 
+    def _normalize_color(self, value) -> str:
+        return re.sub(r"\s+", "", str(value or "").strip().lower())
+
+    def _uses_default_balloon_colors(self) -> bool:
+        balloon_colors = self.config.get("balloon_color")
+        if not isinstance(balloon_colors, list):
+            return False
+
+        required_count = min(self.num_problems, 13)
+        if len(balloon_colors) < required_count:
+            return False
+
+        actual_colors = [
+            self._normalize_color((balloon_colors[i] or {}).get("background_color"))
+            for i in range(required_count)
+        ]
+
+        for palette in srkDefaultBallonColorPalettes:
+            if len(palette) < required_count:
+                continue
+            expected_colors = [
+                self._normalize_color(color) for color in palette[:required_count]
+            ]
+            if actual_colors == expected_colors:
+                return True
+        return False
+
     def contest(self) -> rank3.Contest:
         # 处理时间戳：如果是毫秒级时间戳，转换为秒级
         start_time = self.config["start_time"]
         end_time = self.config["end_time"]
         frozen_time = self.config.get("frozen_time", 0)
         link = self.config.get("link", None)
-        banner = self.config.get("banner", None)
+        banner = self.config.get("_srk_banner", self.config.get("banner", None))
+        banner_link = self.config.get("_srk_banner_link")
 
-        # 检查是否为毫秒级时间戳（大于某个阈值，比如2000年的时间戳*1000）
-        if start_time > 946684800000:  # 2000-01-01 00:00:00 的毫秒时间戳
-            start_time = start_time // 1000
-        if end_time > 946684800000:
-            end_time = end_time // 1000
+        start_time = _normalize_contest_timestamp_seconds(start_time)
+        end_time = _normalize_contest_timestamp_seconds(end_time)
 
         # 兼容 frozen_time 的多种含义：
         # 1) 如果 frozen_time 看起来像一个毫秒级的时间戳（> 2000 年），则视为封榜开始时间戳，计算封榜时长 = end_time - frozen_timestamp
@@ -352,12 +744,22 @@ class Parse:
 
         duration = (end_time - start_time) / 3600
 
-        # 处理 banner：转换为 {image, link} 格式
+        # 处理 banner：转换为 standard-ranklist 的 Image 或 ImageWithLink 格式
         processed_banner = None
-        if banner is not None and isinstance(banner, dict):
-            original_link = banner.get("url")
-            if original_link:
-                processed_banner = {"image": original_link, "link": original_link}
+        if banner is not None:
+            if isinstance(banner, str):
+                processed_banner = (
+                    {"image": banner, "link": banner_link} if banner_link else banner
+                )
+            elif isinstance(banner, dict):
+                original_link = image_downloader.get_srk_image_without_download(banner)
+                banner_link = banner_link or image_downloader.image_link(banner)
+                if original_link:
+                    processed_banner = (
+                        {"image": original_link, "link": banner_link}
+                        if banner_link
+                        else original_link
+                    )
 
         return rank3.Contest(
             self.config["contest_name"],
@@ -370,20 +772,14 @@ class Parse:
 
     def problems(self) -> List[rank3.Problem]:
         problems = []
-        f = 1
-        for i, v in enumerate(self.problem_id_list):
-            if self.config.get("balloon_color") is not None:
-                color = self.config["balloon_color"][i]
-                if i <= 12 and color["background_color"] != srkDefaultBallonColors[i]:
-                    f = 0
-                    break
+        uses_default_balloon_colors = self._uses_default_balloon_colors()
 
         for i, v in enumerate(self.problem_id_list):
             style = None
             if self.config.get("balloon_color") is not None:
                 color = self.config["balloon_color"][i]
                 style = (color["background_color"],)
-            if f == 1:
+            if uses_default_balloon_colors:
                 style = None
             problems.append(rank3.Problem(v, self.statistics[i], style))
         return problems
@@ -393,15 +789,28 @@ class Parse:
         ccpcFlag = False
         toRemarks = True
         medal_config = self.config.get("medal")
-        special_official_group = self._has_special_official_group()
+        special_official_group_ids = self._special_official_group_ids()
+        official_medal_keys = ["official"] + [
+            group_id
+            for group_id in special_official_group_ids
+            if group_id != "official"
+        ]
+        official_medal_key = next(
+            (
+                key
+                for key in official_medal_keys
+                if type(medal_config) is dict and medal_config.get(key) is not None
+            ),
+            None,
+        )
         if (
-            special_official_group
+            official_medal_key is not None
             and type(medal_config) is dict
-            and medal_config.get("official") is not None
+            and medal_config.get(official_medal_key) is not None
         ):
-            self.gold = medal_config["official"]["gold"]
-            self.silver = medal_config["official"]["silver"]
-            self.bronze = medal_config["official"]["bronze"]
+            self.gold = medal_config[official_medal_key]["gold"]
+            self.silver = medal_config[official_medal_key]["silver"]
+            self.bronze = medal_config[official_medal_key]["bronze"]
             toRemarks = False
         elif type(medal_config) is str:
             if medal_config == "CCPC" or medal_config == "ccpc":
@@ -441,7 +850,7 @@ class Parse:
         anotherSeries = []
         if len(markers) > 0 and type(medal_config) is dict:
             for key, value in medal_config.items():
-                if key == "all" or (key == "official" and special_official_group):
+                if key == "all" or key in special_official_group_ids:
                     continue
                 if (
                     type(value) is dict
@@ -513,11 +922,11 @@ class Parse:
         index = 0
         femalePattern = r"女队|女生|女子"
         starPattern = r"打星"
-        special_official_group = self._has_special_official_group()
+        special_official_group_ids = self._special_official_group_ids()
         for key, value in self.group.items():
             if key == "unofficial":
                 continue
-            if key == "official" and special_official_group:
+            if key in special_official_group_ids:
                 continue
             if re.search(starPattern, str(value)):
                 continue
@@ -549,7 +958,7 @@ class Parse:
     def rows(self, markers) -> List[rank3.Row]:
         data = []
         teams_items = self._team_items()
-        special_official_group = self._has_special_official_group()
+        special_official_group_ids = self._special_official_group_ids()
 
         for k, v in teams_items:
             u_markers = []
@@ -574,7 +983,7 @@ class Parse:
             for t in group:
                 if (
                     t is not None
-                    and not (t == "official" and special_official_group)
+                    and t not in special_official_group_ids
                     and t != "unofficial"
                     and t != "girl"
                 ):
@@ -583,11 +992,15 @@ class Parse:
                             u_markers.append(m)
             # 检查group外层对象属性是否与markers重合
             for m in markers:
-                if m.marker["id"] in v and m not in u_markers:
+                if (
+                    m.marker["id"] in v
+                    and self._is_true_flag(v.get(m.marker["id"]))
+                    and m not in u_markers
+                ):
                     u_markers.append(m)
 
             # 判断是否为女队的逻辑（只要 markers 里有女队相关 marker 且 user 是女队且未加过就加）
-            original_girl = v.get("girl") == 1
+            original_girl = self._is_true_flag(v.get("girl"))
             group_girl = "girl" in group
             is_girl_team = original_girl or group_girl
             # 女队相关 marker: id 含 female/girl 或 label 含“女队”
@@ -663,31 +1076,6 @@ class Parse:
                 v.get("photo", None),
             )
 
-            # 处理队伍照片：根据 missing_photo 字段生成 x_photo 信息
-            x_photo = None
-            missing_photo = v.get("missing_photo", False)
-            if not missing_photo:  # 如果没有 missing_photo 字段或者为 False，说明有照片
-                # 从 config 中获取照片URL模板来确定文件扩展名
-                team_photo_template = self.config.get("options", {}).get(
-                    "team_photo_url_template", {}
-                )
-                if team_photo_template and "url" in team_photo_template:
-                    # 从模板URL中提取文件扩展名，如果没有则默认为 .jpg
-                    template_url = team_photo_template["url"]
-                    if "." in template_url:
-                        # 提取最后一个点后面的内容作为扩展名
-                        extension = "." + template_url.split(".")[-1]
-                    else:
-                        extension = ".jpg"
-                    x_photo = f"{k}{extension}"
-                else:
-                    # 如果没有模板，默认使用 .jpg
-                    x_photo = f"{k}.jpg"
-
-            # 把 x_photo 放入 user.user 中（rows[].user.x_photo）而非 row 层级
-            if x_photo is not None:
-                user.user["x_photo"] = x_photo
-
             cnt, ctms = 0, 0
             last_solved_time = 0  # 最后一次通过题目的时间（秒级时间戳）
             statuses = self.statuses.get(str(k), [])
@@ -705,10 +1093,10 @@ class Parse:
 
                     # 更新最后一次通过题目的时间
                     # v.duration 已经转换为秒，包含了罚时+通过时间
-                    # 原始罚时公式（毫秒）：duration = 20*60*1000*tries + timestamp
-                    # 转换为秒后：duration = 20*60*tries + timestamp_in_seconds
-                    # 所以实际通过时间戳（秒） = duration - 20*60*tries
-                    actual_solve_time = v.duration - (20 * 60 * v.tries)
+                    # duration 中只累计 AC 前的错误罚时，tries 包含 AC 那次。
+                    actual_solve_time = v.duration - (
+                        20 * 60 * max(v.tries - 1, 0)
+                    )
                     if actual_solve_time > last_solved_time:
                         last_solved_time = actual_solve_time
 
@@ -737,7 +1125,6 @@ class Parse:
         rows = []
         for d in data:
             row = rank3.Row(d["user"], d["score"], d["status"], self.num_problems)
-            # x_photo 已直接放入 user 字段（user.user['x_photo']），无需在 row 层级重复设置
             rows.append(row)
         return rows
 
@@ -753,7 +1140,7 @@ class Parse:
 
     def __calculate(self) -> None:
 
-        first_blood = [0 for i in self.problem_id_list]
+        first_blood = [None for i in self.problem_id_list]
 
         for v in self.runs:
             # 将 runs 中的 problem_id 映射到索引
@@ -797,7 +1184,7 @@ class Parse:
 
             tt = v["timestamp"] * 1000 if Parse.time_unit == "s" else v["timestamp"]
             if result == rank3.SR_Accepted:
-                if first_blood[problem_idx] == 0 or first_blood[problem_idx] == tt:
+                if first_blood[problem_idx] is None or first_blood[problem_idx] == tt:
                     result = rank3.SR_FirstBlood
                     first_blood[problem_idx] = tt
 
@@ -917,15 +1304,8 @@ def generate_rank(
                 f"{path} 获取 organizations.json 失败，将不写入 organization_id 映射"
             )
 
-        if download_banner:
-            banner = config.get("banner", None)
-            if banner is not None:
-                contest_id = os.path.basename(resolved_output_path).replace(
-                    ".srk.json", ""
-                )
-                banner_path = image_downloader.download_banner(banner, contest_id)
-                if banner_path is None:
-                    warnings.append(f"{path} 下载 banner 失败")
+        contest_id = _asset_alias(resolved_output_path)
+        _prepare_assets(path, config, teams, contest_id, download_banner, warnings)
 
         set_contest_url(path, config)
         runs.sort(key=lambda x: x["timestamp"])
@@ -938,11 +1318,9 @@ def generate_rank(
                 warnings=warnings,
                 error=f"{path} 获取提交记录为空",
             )
-        Parse.time_unit = "ms"
-
-        if runs[0]["timestamp"] / 1000 < 1:
-            warnings.append(f"获取 runs 失败, {runs[0]['timestamp']}，按秒级时间戳处理")
-            Parse.time_unit = "s"
+        Parse.time_unit = _infer_run_time_unit(config, runs)
+        if Parse.time_unit == "s":
+            warnings.append("检测到 run.timestamp 为秒级时间戳，按秒级处理")
         parse = Parse(config, teams, runs, org)
         contest = parse.contest()
         problems = parse.problems()
@@ -958,13 +1336,16 @@ def generate_rank(
             marker,
             contributors=["XCPCIO (https://xcpcio.com)", "algoUX (https://algoux.org)"],
             penaltyTimeCalculation="s" if options else "min",
-            isRemarks=series["remarks"],
+            isRemarks=series["remarks"] and not _is_online_contest(path, config),
         )
         output_dir = os.path.dirname(resolved_output_path)
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
+        rank_object = r.result()
+        if _is_online_contest(path, config):
+            _normalize_online_first_blood(rank_object)
         with open(resolved_output_path, "w", encoding="utf-8") as file:
-            json.dump(r.result(), file, ensure_ascii=False)
+            json.dump(rank_object, file, ensure_ascii=False)
 
         return _result(
             True,
@@ -998,5 +1379,5 @@ def once():
 
 
 if __name__ == "__main__":
-    # main()
-    once()
+    main()
+    # once()

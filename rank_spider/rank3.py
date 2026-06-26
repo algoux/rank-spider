@@ -279,9 +279,6 @@ class Rank:
                 'score': r.score,
                 'statuses': r.statuses,
             }
-            # 如果存在 x_photo 字段，则添加到序列化结果中
-            if hasattr(r, 'x_photo') and r.x_photo is not None:
-                row_data['x_photo'] = r.x_photo
             rows.append(row_data)
         
         return rows
@@ -314,7 +311,7 @@ class Rank:
         if self.penaltyTimeCalculation == 's':
             rank['sorter']['config']['rankingTimePrecision'] = 'min'
             rank['sorter']['config']['rankingTimeRounding'] = 'floor'
-        if self.markers is not None:
+        if self.markers is not None and len(self.markers) > 0:
             rank['markers'] = self.markers
         if self.contributors is not None:
             rank['contributors'] = self.contributors

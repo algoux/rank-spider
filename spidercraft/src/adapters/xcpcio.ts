@@ -25,6 +25,20 @@ const SR_NO_OUTPUT = 'NOUT';
 const STYLE_GOLD = 'gold';
 const STYLE_SILVER = 'silver';
 const STYLE_BRONZE = 'bronze';
+// Old XCPCIO online boards can collapse many accepted runs to the same earliest time.
+const MAX_SAME_TIME_ONLINE_FIRST_BLOODS = 10;
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']);
+const MIME_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+  'image/bmp': 'bmp',
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
+};
 
 const contestUrl = new Map<string, string>();
 const unknownContest = new Map<
@@ -52,20 +66,95 @@ const SR_RESULTS: Record<string, string> = {
   FROZEN: SR_FROZEN,
 };
 
-const SRK_DEFAULT_BALLOON_COLORS = [
-  'rgba(189, 14, 14, 0.7)',
-  'rgba(149, 31, 217, 0.7)',
-  'rgba(16, 32, 96, 0.7)',
-  'rgba(38, 185, 60, 0.7)',
-  'rgba(239, 217, 9, 0.7)',
-  'rgba(243, 88, 20, 0.7)',
-  'rgba(12, 76, 138, 0.7)',
-  'rgba(156, 155, 155, 0.7)',
-  'rgba(4, 154, 115, 0.7)',
-  'rgba(159, 19, 236, 0.7)',
-  'rgba(42, 197, 202, 0.7)',
-  'rgba(142, 56, 54, 0.7)',
-  'rgba(144, 238, 144, 0.7)',
+const SRK_DEFAULT_BALLOON_COLOR_PALETTES = [
+  [
+    'rgba(189, 14, 14, 0.7)',
+    'rgba(149, 31, 217, 0.7)',
+    'rgba(16, 32, 96, 0.7)',
+    'rgba(38, 185, 60, 0.7)',
+    'rgba(239, 217, 9, 0.7)',
+    'rgba(243, 88, 20, 0.7)',
+    'rgba(12, 76, 138, 0.7)',
+    'rgba(156, 155, 155, 0.7)',
+    'rgba(4, 154, 115, 0.7)',
+    'rgba(159, 19, 236, 0.7)',
+    'rgba(42, 197, 202, 0.7)',
+    'rgba(142, 56, 54, 0.7)',
+    'rgba(144, 238, 144, 0.7)',
+  ],
+  [
+    'rgba(189, 14, 14, 0.7)',
+    'rgba(255, 144, 228, 0.7)',
+    'rgba(255, 255, 255, 0.7)',
+    'rgba(38, 185, 60, 0.7)',
+    'rgba(239, 217, 9, 0.7)',
+    'rgba(243, 88, 20, 0.7)',
+    'rgba(12, 76, 138, 0.7)',
+    'rgba(156, 155, 155, 0.7)',
+    'rgba(4, 154, 115, 0.7)',
+    'rgba(159, 19, 236, 0.7)',
+    'rgba(42, 197, 202, 0.7)',
+    'rgba(142, 56, 54, 0.7)',
+    'rgba(0, 0, 0, 0.7)',
+  ],
+  [
+    'rgba(189, 14, 14, 0.7)',
+    '#951FD9',
+    'rgba(255, 255, 255, 0.7)',
+    'rgba(38, 185, 60, 0.7)',
+    'rgba(239, 217, 9, 0.7)',
+    'rgba(243, 88, 20, 0.7)',
+    'rgba(12, 76, 138, 0.7)',
+    'rgba(156, 155, 155, 0.7)',
+    'rgba(4, 154, 115, 0.7)',
+    'rgba(159, 19, 236, 0.7)',
+    'rgba(42, 197, 202, 0.7)',
+    'rgba(142, 56, 54, 0.7)',
+    'rgba(0, 0, 0, 0.7)',
+  ],
+  [
+    '#dc2626',
+    '#f59e0b',
+    '#fde047',
+    '#22c55e',
+    '#5eead4',
+    '#3b82f6',
+    '#a855f7',
+    '#f472b6',
+    '#ffffff',
+    '#edc5f2',
+    '#95f4b8',
+    '#f2e7b1',
+  ],
+  [
+    '#ff3b30',
+    '#ee7528',
+    '#fde047',
+    '#00aa00',
+    '#5eead4',
+    '#1b75dc',
+    '#a855f7',
+    '#f472b6',
+    '#A52A2A',
+    '#000080',
+    '#000000',
+    '#ffffff',
+    '#f5b7b7',
+  ],
+  [
+    '#ff3b30',
+    '#ee7528',
+    '#fde047',
+    '#00aa00',
+    '#5eead4',
+    '#1b75dc',
+    '#a855f7',
+    '#f472b6',
+    '#A52A2A',
+    '#000080',
+    '#000000',
+    '#737373',
+  ],
 ];
 
 const MEDAL_MISSING_REMARKS = {
@@ -329,19 +418,67 @@ function formatTimestampPlus8(seconds: number): string {
   )}+08:00`;
 }
 
+function normalizeContestTimestampSeconds(value: any): number {
+  const timestamp = toPythonNumber(value);
+  if (!Number.isFinite(timestamp)) return Number.NaN;
+  if (timestamp > 946684800000) {
+    return Math.floor(timestamp / 1000);
+  }
+  return timestamp;
+}
+
+function inferRunTimeUnit(config: AnyObject, runs: AnyObject[]): TimeUnit {
+  const firstTimestamp = toPythonNumber(runs[0]?.timestamp);
+  if (!Number.isFinite(firstTimestamp)) return 'ms';
+  if (firstTimestamp / 1000 < 1) return 's';
+
+  const startTime = normalizeContestTimestampSeconds(config.start_time);
+  const endTime = normalizeContestTimestampSeconds(config.end_time);
+  const contestDurationSeconds = endTime - startTime;
+  if (!Number.isFinite(contestDurationSeconds) || contestDurationSeconds <= 0) {
+    return 'ms';
+  }
+
+  const maxTimestamp = runs.reduce((max, run) => {
+    const timestamp = toPythonNumber(run.timestamp);
+    return Number.isFinite(timestamp) ? Math.max(max, timestamp) : max;
+  }, Number.NEGATIVE_INFINITY);
+  if (!Number.isFinite(maxTimestamp)) return 'ms';
+
+  const toleranceSeconds = Math.max(300, contestDurationSeconds * 0.01);
+  if (maxTimestamp <= contestDurationSeconds + toleranceSeconds) {
+    return 's';
+  }
+  return 'ms';
+}
+
+function isOnlineContest(contestPath: string, config: AnyObject): boolean {
+  const text = [
+    contestPath,
+    config.contest_name,
+    config.name,
+    config.title,
+    config.board_name,
+  ]
+    .map((value) => {
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'object') return Object.values(value).join(' ');
+      return String(value);
+    })
+    .join(' ');
+  return /网络|online|preliminary/i.test(text);
+}
+
 function makeContest(config: AnyObject): AnyObject {
   let startTime = config.start_time;
   let endTime = config.end_time;
   const frozenTime = config.frozen_time ?? 0;
   const link = config.link ?? null;
-  const banner = config.banner ?? null;
+  const banner = config.__srk_banner ?? config.banner ?? null;
+  let bannerLink = config.__srk_banner_link ?? null;
 
-  if (startTime > 946684800000) {
-    startTime = Math.floor(startTime / 1000);
-  }
-  if (endTime > 946684800000) {
-    endTime = Math.floor(endTime / 1000);
-  }
+  startTime = normalizeContestTimestampSeconds(startTime);
+  endTime = normalizeContestTimestampSeconds(endTime);
 
   let frozenHours = 0;
   try {
@@ -365,14 +502,16 @@ function makeContest(config: AnyObject): AnyObject {
   }
 
   const duration = (endTime - startTime) / 3600;
-  let processedBanner: AnyObject | null = null;
-  if (banner !== null && typeof banner === 'object' && !Array.isArray(banner)) {
-    const originalLink = banner.url;
-    if (originalLink) {
-      processedBanner = {
-        image: originalLink,
-        link: originalLink,
-      };
+  let processedBanner: AnyObject | string | null = null;
+  if (banner !== null && banner !== undefined) {
+    if (typeof banner === 'string') {
+      processedBanner = bannerLink ? { image: banner, link: bannerLink } : banner;
+    } else if (typeof banner === 'object' && !Array.isArray(banner)) {
+      const originalLink = imageReferenceWithoutDownload(banner);
+      bannerLink = bannerLink ?? imageLink(banner);
+      if (originalLink) {
+        processedBanner = bannerLink ? { image: originalLink, link: bannerLink } : originalLink;
+      }
     }
   }
 
@@ -434,6 +573,12 @@ function makeUser(
         };
         if (member.role !== null && member.role !== undefined) {
           teamMember.role = member.role;
+        }
+        if (member.avatar !== null && member.avatar !== undefined) {
+          teamMember.avatar = member.avatar;
+        }
+        if (member.link !== null && member.link !== undefined) {
+          teamMember.link = member.link;
         }
         return teamMember;
       }
@@ -539,7 +684,7 @@ function buildRank(
     rank.sorter.config.rankingTimePrecision = 'min';
     rank.sorter.config.rankingTimeRounding = 'floor';
   }
-  if (markers !== undefined) {
+  if (markers !== undefined && markers.length > 0) {
     rank.markers = markers;
   }
   if (contributors !== undefined) {
@@ -549,6 +694,87 @@ function buildRank(
     rank.remarks = MEDAL_MISSING_REMARKS;
   }
   return rank;
+}
+
+function timeToMilliseconds(time: any): number {
+  if (!Array.isArray(time)) return Number.NaN;
+  const value = toPythonNumber(time[0]);
+  if (!Number.isFinite(value)) return Number.NaN;
+  switch (time[1]) {
+    case 'ms':
+      return value;
+    case 's':
+      return value * 1000;
+    case 'min':
+      return value * 60 * 1000;
+    case 'h':
+      return value * 60 * 60 * 1000;
+    case 'd':
+      return value * 24 * 60 * 60 * 1000;
+    default:
+      return value;
+  }
+}
+
+function setAcceptedSolutionResult(status: AnyObject, result: string): void {
+  if (!Array.isArray(status.solutions)) return;
+  for (let i = status.solutions.length - 1; i >= 0; i--) {
+    const solution = status.solutions[i];
+    if (solution?.result === SR_ACCEPTED || solution?.result === SR_FIRST_BLOOD) {
+      solution.result = result;
+      return;
+    }
+  }
+}
+
+function normalizeOnlineFirstBlood(rank: AnyObject): void {
+  const bestByProblem = new Map<
+    number,
+    {
+      time: number;
+      candidates: AnyObject[];
+    }
+  >();
+
+  for (const row of rank.rows ?? []) {
+    const statuses = row.statuses ?? row.status ?? [];
+    if (!Array.isArray(statuses)) continue;
+    for (let problemIndex = 0; problemIndex < statuses.length; problemIndex++) {
+      const status = statuses[problemIndex];
+      if (status === null || status === undefined) continue;
+
+      if (status.result === SR_FIRST_BLOOD) {
+        status.result = SR_ACCEPTED;
+      }
+      if (Array.isArray(status.solutions)) {
+        for (const solution of status.solutions) {
+          if (solution?.result === SR_FIRST_BLOOD) {
+            solution.result = SR_ACCEPTED;
+          }
+        }
+      }
+
+      if (status.result !== SR_ACCEPTED) continue;
+      const time = timeToMilliseconds(status.time);
+      if (!Number.isFinite(time)) continue;
+
+      const best = bestByProblem.get(problemIndex);
+      if (best === undefined || time < best.time) {
+        bestByProblem.set(problemIndex, { time, candidates: [status] });
+      } else if (time === best.time) {
+        best.candidates.push(status);
+      }
+    }
+  }
+
+  for (const { candidates } of bestByProblem.values()) {
+    const firstBloods =
+      candidates.length > MAX_SAME_TIME_ONLINE_FIRST_BLOODS ? candidates.slice(0, 1) : candidates;
+    for (const status of firstBloods) {
+      status.result = SR_FIRST_BLOOD;
+      setAcceptedSolutionResult(status, SR_FIRST_BLOOD);
+    }
+  }
 }
 
 function extractExtension(url: string, defaultExt = 'png'): string {
@@ -564,11 +790,112 @@ function extractExtension(url: string, defaultExt = 'png'): string {
   const filename = pathname.split('/').pop() ?? '';
   if (filename.includes('.')) {
     const ext = filename.split('.').pop() ?? '';
-    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext.toLowerCase())) {
-      return ext;
+    const normalizedExt = ext.toLowerCase();
+    if (IMAGE_EXTENSIONS.has(normalizedExt)) {
+      return normalizedExt;
     }
   }
   return defaultExt;
+}
+
+function toPosixPath(filePath: string): string {
+  return filePath.split(path.sep).join('/');
+}
+
+function safeFilenameComponent(value: any, fallback = 'image'): string {
+  const text = String(value ?? fallback)
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^[._-]+|[._-]+$/g, '');
+  return text || fallback;
+}
+
+function resolveImageUrl(url: string, baseUrl = `${XCPCIO_DATA_BASE_URL}/`): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  return new URL(url, baseUrl).href;
+}
+
+function getImageUrl(imageData: any): string | null {
+  if (typeof imageData === 'string') {
+    return imageData.startsWith('data:') ? null : imageData;
+  }
+  if (imageData !== null && typeof imageData === 'object' && !Array.isArray(imageData)) {
+    return typeof imageData.url === 'string' && imageData.url ? imageData.url : null;
+  }
+  return null;
+}
+
+function parseBase64Image(imageData: any): { mime: string; base64: string } | null {
+  if (typeof imageData === 'string') {
+    const match = imageData.match(/^data:([^;,]+)?;base64,([\s\S]*)$/);
+    if (!match) return null;
+    return { mime: match[1] || 'image/png', base64: match[2] };
+  }
+  if (imageData === null || typeof imageData !== 'object' || Array.isArray(imageData)) {
+    return null;
+  }
+  if (typeof imageData.base64 !== 'string' || !imageData.base64) {
+    return null;
+  }
+  if (imageData.base64.startsWith('data:')) {
+    return parseBase64Image(imageData.base64);
+  }
+  const mime = imageData.mime ?? `image/${imageData.type ?? 'png'}`;
+  return { mime, base64: imageData.base64 };
+}
+
+function extractImageExtension(imageData: any, defaultExt = 'png'): string {
+  const url = getImageUrl(imageData);
+  if (url) {
+    const ext = extractExtension(url, '');
+    if (ext) return ext;
+  }
+
+  const base64Image = parseBase64Image(imageData);
+  if (base64Image && MIME_EXTENSIONS[base64Image.mime]) {
+    return MIME_EXTENSIONS[base64Image.mime];
+  }
+  if (imageData !== null && typeof imageData === 'object' && !Array.isArray(imageData)) {
+    if (MIME_EXTENSIONS[imageData.mime]) {
+      return MIME_EXTENSIONS[imageData.mime];
+    }
+    if (typeof imageData.type === 'string' && IMAGE_EXTENSIONS.has(imageData.type.toLowerCase())) {
+      return imageData.type.toLowerCase();
+    }
+  }
+  return defaultExt;
+}
+
+function imageReferenceWithoutDownload(
+  imageData: any,
+  baseUrl = `${XCPCIO_DATA_BASE_URL}/`,
+): string | null {
+  if (typeof imageData === 'string') {
+    if (imageData.startsWith('data:')) return null;
+    return resolveImageUrl(imageData, baseUrl);
+  }
+  const url = getImageUrl(imageData);
+  return url ? resolveImageUrl(url, baseUrl) : null;
+}
+
+function imageLink(imageData: any, baseUrl = `${XCPCIO_DATA_BASE_URL}/`): string | null {
+  const url = getImageUrl(imageData);
+  return url ? resolveImageUrl(url, baseUrl) : null;
+}
+
+async function writeBase64Image(imageData: any, savePath: string): Promise<string | null> {
+  const parsed = parseBase64Image(imageData);
+  if (!parsed) return null;
+
+  try {
+    await fs.ensureDir(path.dirname(savePath));
+    await fs.writeFile(savePath, Buffer.from(parsed.base64, 'base64'));
+    console.log(`图片已保存到: ${savePath}`);
+    return savePath;
+  } catch (e) {
+    console.log(`保存 base64 图片失败: ${savePath}, 错误: ${(e as Error).message}`);
+    return null;
+  }
 }
 
 async function downloadImage(
@@ -577,7 +904,7 @@ async function downloadImage(
   baseUrl = `${XCPCIO_DATA_BASE_URL}/`,
 ): Promise<string | null> {
   if (!url) return null;
-  const imageUrl = /^https?:\/\//i.test(url) ? url : `${baseUrl}${url}`;
+  const imageUrl = resolveImageUrl(url, baseUrl);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
 
@@ -612,17 +939,169 @@ async function downloadImage(
   }
 }
 
-async function downloadBanner(bannerData: any, contestId: string, baseDir = 'images'): Promise<string | null> {
-  if (!bannerData || typeof bannerData !== 'object' || Array.isArray(bannerData)) {
-    return null;
+async function downloadAsset(
+  imageData: any,
+  contestId: string,
+  filenameStem: string,
+  assetBaseDir: string,
+  defaultExt = 'png',
+): Promise<{ path: string | null; ok: boolean }> {
+  if (imageData === null || imageData === undefined) {
+    return { path: null, ok: false };
   }
 
-  const url = bannerData.url;
-  if (!url) return null;
+  const ext = extractImageExtension(imageData, defaultExt);
+  const filename = `${safeFilenameComponent(filenameStem)}.${ext}`;
+  const relativePath = toPosixPath(path.join('assets', safeFilenameComponent(contestId), filename));
+  const savePath = path.join(assetBaseDir, safeFilenameComponent(contestId), filename);
 
-  const ext = extractExtension(url);
-  const savePath = `${baseDir}/${contestId}/assets/banner.${ext}`;
-  return downloadImage(url, savePath);
+  if (parseBase64Image(imageData)) {
+    const localPath = await writeBase64Image(imageData, savePath);
+    return { path: localPath ? relativePath : null, ok: localPath !== null };
+  }
+
+  const url = getImageUrl(imageData);
+  if (!url) {
+    return { path: null, ok: false };
+  }
+
+  const localPath = await downloadImage(url, savePath);
+  if (localPath === null) {
+    return { path: imageReferenceWithoutDownload(imageData), ok: false };
+  }
+  return { path: relativePath, ok: true };
+}
+
+async function prepareImageAsset(
+  imageData: any,
+  contestId: string,
+  filenameStem: string,
+  assetBaseDir: string,
+  warnings: string[],
+  warningLabel: string,
+  downloadAssets: boolean,
+  defaultExt = 'png',
+): Promise<string | null> {
+  if (imageData === null || imageData === undefined) return null;
+
+  if (downloadAssets) {
+    const result = await downloadAsset(imageData, contestId, filenameStem, assetBaseDir, defaultExt);
+    if (!result.ok) {
+      warnings.push(
+        result.path === null
+          ? `${warningLabel} 图片素材处理失败`
+          : `${warningLabel} 图片素材下载失败，已回退到远程 URL`,
+      );
+    }
+    return result.path;
+  }
+
+  const imagePath = imageReferenceWithoutDownload(imageData);
+  if (imagePath === null && parseBase64Image(imageData)) {
+    warnings.push(`${warningLabel} 是 base64 图片，已跳过；启用资源下载后可写入 assets/`);
+  }
+  return imagePath;
+}
+
+function templateImageForTeam(template: any, teamId: any): any | null {
+  if (!template) return null;
+  const teamIdValue = String(teamId);
+  if (typeof template === 'string') {
+    return template.replace(/\$\{team_id\}/g, teamIdValue);
+  }
+  if (template !== null && typeof template === 'object' && !Array.isArray(template)) {
+    const image = { ...template };
+    if (typeof image.url === 'string') {
+      image.url = image.url.replace(/\$\{team_id\}/g, teamIdValue);
+    }
+    return image;
+  }
+  return null;
+}
+
+function teamItems(teams: AnyObject | AnyObject[]): Array<[any, AnyObject]> {
+  if (Array.isArray(teams)) {
+    return teams.map((team, index): [any, AnyObject] => [team?.id ?? String(index), team]);
+  }
+  return Object.entries(teams);
+}
+
+async function prepareAssets(
+  contestPath: string,
+  config: AnyObject,
+  teams: AnyObject | AnyObject[],
+  contestId: string,
+  assetBaseDir: string,
+  downloadAssets: boolean,
+  warnings: string[],
+): Promise<void> {
+  const banner = config.banner ?? null;
+  if (banner !== null && banner !== undefined) {
+    const bannerImage = await prepareImageAsset(
+      banner,
+      contestId,
+      'banner',
+      assetBaseDir,
+      warnings,
+      `${contestPath} banner`,
+      downloadAssets,
+      'png',
+    );
+    if (bannerImage) {
+      config.__srk_banner = bannerImage;
+      const link = imageLink(banner);
+      if (link) {
+        config.__srk_banner_link = link;
+      }
+    }
+  }
+
+  const teamPhotoTemplate = config.options?.team_photo_url_template ?? null;
+  for (const [teamKey, team] of teamItems(teams)) {
+    if (team === null || typeof team !== 'object' || Array.isArray(team)) {
+      continue;
+    }
+
+    const teamId = team.team_id ?? team.id ?? teamKey;
+    const filenameId = safeFilenameComponent(teamId, 'team');
+
+    const avatarSource = team.avatar ?? team.badge ?? null;
+    if (avatarSource !== null) {
+      const avatar = await prepareImageAsset(
+        avatarSource,
+        contestId,
+        `team-${filenameId}-avatar`,
+        assetBaseDir,
+        warnings,
+        `${contestPath} team ${teamId} avatar`,
+        downloadAssets,
+        'png',
+      );
+      if (avatar) {
+        team.avatar = avatar;
+      }
+    }
+
+    let photoSource = team.photo ?? null;
+    if (photoSource === null && !(team.missing_photo ?? false)) {
+      photoSource = templateImageForTeam(teamPhotoTemplate, teamId);
+    }
+    if (photoSource !== null) {
+      const photo = await prepareImageAsset(
+        photoSource,
+        contestId,
+        `team-${filenameId}-photo`,
+        assetBaseDir,
+        warnings,
+        `${contestPath} team ${teamId} photo`,
+        downloadAssets,
+        'jpg',
+      );
+      if (photo) {
+        team.photo = photo;
+      }
+    }
+  }
 }
 
 class XcpcioParser {
@@ -715,13 +1194,39 @@ class XcpcioParser {
   private teamGroupIds(team: AnyObject): any[] {
     let group = team.group ?? [];
     if (group === null) group = [];
-    if (!Array.isArray(group)) group = [group];
+    if (!Array.isArray(group)) {
+      group = [group];
+    } else {
+      group = [...group];
+    }
 
     let teamMarkers = team.markers ?? [];
     if (teamMarkers === null) teamMarkers = [];
     if (!Array.isArray(teamMarkers)) teamMarkers = [teamMarkers];
 
+    if (objectHas(team, 'official')) {
+      if (this.isTrueFlag(team.official) && !group.includes('official')) {
+        group.push('official');
+      } else if (this.isFalseFlag(team.official) && !group.includes('unofficial')) {
+        group.push('unofficial');
+      }
+    }
+
     return group.concat(teamMarkers.filter((marker: any) => !group.includes(marker)));
+  }
+
+  private isTrueFlag(value: any): boolean {
+    if (typeof value === 'string') {
+      return ['1', 'true', 'yes'].includes(value.trim().toLowerCase());
+    }
+    return value === true || value === 1;
+  }
+
+  private isFalseFlag(value: any): boolean {
+    if (typeof value === 'string') {
+      return ['0', 'false', 'no'].includes(value.trim().toLowerCase());
+    }
+    return value === false || value === 0;
   }
 
   private starGroupIds(): Set<any> {
@@ -762,6 +1267,29 @@ class XcpcioParser {
     return ids;
   }
 
+  private isOfficialGroupLabel(value: any): boolean {
+    const label = String(value).trim().toLowerCase();
+    return ['正式', '正式队', '正式队伍', '默认队伍组', 'official'].includes(label);
+  }
+
+  private officialGroupCandidates(): string[] {
+    if (objectHas(this.group, 'official')) {
+      return ['official'];
+    }
+    return Object.entries(this.group)
+      .filter(([, value]) => this.isOfficialGroupLabel(value))
+      .map(([key]) => key);
+  }
+
+  private specialOfficialGroupIds(): Set<string> {
+    const officialTeamIds = this.officialTeamIdSet();
+    return new Set(
+      this.officialGroupCandidates().filter((groupId) =>
+        this.setEquals(this.groupTeamIdSet(groupId), officialTeamIds),
+      ),
+    );
+  }
+
   private setEquals(left: Set<any>, right: Set<any>): boolean {
     if (left.size !== right.size) return false;
     for (const value of left) {
@@ -771,10 +1299,7 @@ class XcpcioParser {
   }
 
   private hasSpecialOfficialGroup(): boolean {
-    return (
-      objectHas(this.group, 'official') &&
-      this.setEquals(this.groupTeamIdSet('official'), this.officialTeamIdSet())
-    );
+    return this.specialOfficialGroupIds().size > 0;
   }
 
   private extractLocalizedName(value: any): string {
@@ -842,22 +1367,37 @@ class XcpcioParser {
     return orgName || null;
   }
 
+  private normalizeColor(value: any): string {
+    return String(value ?? '').trim().toLowerCase().replace(/\s+/g, '');
+  }
+
+  private usesDefaultBalloonColors(): boolean {
+    const balloonColors = this.config.balloon_color;
+    if (!Array.isArray(balloonColors)) return false;
+
+    const requiredCount = Math.min(this.numProblems, 13);
+    if (balloonColors.length < requiredCount) return false;
+
+    const actualColors = Array.from({ length: requiredCount }, (_, index) =>
+      this.normalizeColor(balloonColors[index]?.background_color),
+    );
+
+    return SRK_DEFAULT_BALLOON_COLOR_PALETTES.some((palette) => {
+      if (palette.length < requiredCount) return false;
+      const expectedColors = palette
+        .slice(0, requiredCount)
+        .map((color) => this.normalizeColor(color));
+      return actualColors.every((color, index) => color === expectedColors[index]);
+    });
+  }
+
   contest(): AnyObject {
     return makeContest(this.config);
   }
 
   problems(): AnyObject[] {
     const problems: AnyObject[] = [];
-    let f = 1;
-    for (let i = 0; i < this.problemIdList.length; i++) {
-      if (this.config.balloon_color !== null && this.config.balloon_color !== undefined) {
-        const color = this.config.balloon_color[i];
-        if (i <= 12 && color.background_color !== SRK_DEFAULT_BALLOON_COLORS[i]) {
-          f = 0;
-          break;
-        }
-      }
-    }
+    const usesDefaultBalloonColors = this.usesDefaultBalloonColors();
 
     for (let i = 0; i < this.problemIdList.length; i++) {
       let style: [string?] | undefined;
@@ -865,7 +1405,7 @@ class XcpcioParser {
         const color = this.config.balloon_color[i];
         style = [color.background_color];
       }
-      if (f === 1) {
+      if (usesDefaultBalloonColors) {
         style = undefined;
       }
       problems.push(makeProblem(this.problemIdList[i], this.statistics[i], style));
@@ -880,19 +1420,31 @@ class XcpcioParser {
     let ccpcFlag = false;
     let toRemarks = true;
     const medalConfig = this.config.medal;
-    const specialOfficialGroup = this.hasSpecialOfficialGroup();
+    const specialOfficialGroupIds = this.specialOfficialGroupIds();
+    const officialMedalKeys = [
+      'official',
+      ...[...specialOfficialGroupIds].filter((groupId) => groupId !== 'official'),
+    ];
+    const officialMedalKey = officialMedalKeys.find(
+      (key) =>
+        medalConfig !== null &&
+        typeof medalConfig === 'object' &&
+        !Array.isArray(medalConfig) &&
+        medalConfig[key] !== null &&
+        medalConfig[key] !== undefined,
+    );
 
     if (
-      specialOfficialGroup &&
+      officialMedalKey !== undefined &&
       medalConfig !== null &&
       typeof medalConfig === 'object' &&
       !Array.isArray(medalConfig) &&
-      medalConfig.official !== null &&
-      medalConfig.official !== undefined
+      medalConfig[officialMedalKey] !== null &&
+      medalConfig[officialMedalKey] !== undefined
     ) {
-      gold = medalConfig.official.gold;
-      silver = medalConfig.official.silver;
-      bronze = medalConfig.official.bronze;
+      gold = medalConfig[officialMedalKey].gold;
+      silver = medalConfig[officialMedalKey].silver;
+      bronze = medalConfig[officialMedalKey].bronze;
       toRemarks = false;
     } else if (typeof medalConfig === 'string') {
       if (medalConfig === 'CCPC' || medalConfig === 'ccpc') {
@@ -953,7 +1505,7 @@ class XcpcioParser {
       !Array.isArray(medalConfig)
     ) {
       for (const [key, value] of Object.entries(medalConfig)) {
-        if (key === 'all' || (key === 'official' && specialOfficialGroup)) continue;
+        if (key === 'all' || specialOfficialGroupIds.has(key)) continue;
         if (
           value !== null &&
           typeof value === 'object' &&
@@ -1034,10 +1586,10 @@ class XcpcioParser {
     let index = 0;
     const femalePattern = /女队|女生|女子/;
     const starPattern = /打星/;
-    const specialOfficialGroup = this.hasSpecialOfficialGroup();
+    const specialOfficialGroupIds = this.specialOfficialGroupIds();
     for (const [key, value] of Object.entries(this.group)) {
       if (key === 'unofficial') continue;
-      if (key === 'official' && specialOfficialGroup) continue;
+      if (specialOfficialGroupIds.has(key)) continue;
       if (starPattern.test(String(value))) continue;
       const keyLower = String(key).toLowerCase();
       const isFemale =
@@ -1077,7 +1629,7 @@ class XcpcioParser {
     }> = [];
 
     const teamsItems = this.teamItems();
-    const specialOfficialGroup = this.hasSpecialOfficialGroup();
+    const specialOfficialGroupIds = this.specialOfficialGroupIds();
 
     for (const [k, team] of teamsItems) {
       const userMarkers: AnyObject[] = [];
@@ -1103,7 +1655,7 @@ class XcpcioParser {
         if (
           t !== null &&
           t !== undefined &&
-          !(t === 'official' && specialOfficialGroup) &&
+          !specialOfficialGroupIds.has(t) &&
           t !== 'unofficial' &&
           t !== 'girl'
         ) {
@@ -1115,12 +1667,16 @@ class XcpcioParser {
         }
       }
       for (const marker of markers) {
-        if (objectHas(team, marker.id) && !userMarkers.includes(marker)) {
+        if (
+          objectHas(team, marker.id) &&
+          this.isTrueFlag(team[marker.id]) &&
+          !userMarkers.includes(marker)
+        ) {
           userMarkers.push(marker);
         }
       }
 
-      const originalGirl = team.girl === 1;
+      const originalGirl = this.isTrueFlag(team.girl);
       const groupGirl = group.includes('girl');
       const isGirlTeam = originalGirl || groupGirl;
       const femaleMarkers = markers.filter(
@@ -1204,27 +1760,6 @@ class XcpcioParser {
         team.photo ?? null,
       );
 
-      let xPhoto: string | null = null;
-      const missingPhoto = team.missing_photo ?? false;
-      if (!missingPhoto) {
-        const teamPhotoTemplate = this.config.options?.team_photo_url_template ?? {};
-        if (teamPhotoTemplate && objectHas(teamPhotoTemplate, 'url')) {
-          const templateUrl = teamPhotoTemplate.url;
-          let extension: string;
-          if (String(templateUrl).includes('.')) {
-            extension = `.${String(templateUrl).split('.').pop()}`;
-          } else {
-            extension = '.jpg';
-          }
-          xPhoto = `${k}${extension}`;
-        } else {
-          xPhoto = `${k}.jpg`;
-        }
-      }
-      if (xPhoto !== null) {
-        user.x_photo = xPhoto;
-      }
-
       let cnt = 0;
       let ctms = 0;
       let lastSolvedTime = 0;
@@ -1241,7 +1776,8 @@ class XcpcioParser {
             ctms += Math.floor(status.duration / 60) * 60;
           }
 
-          const actualSolveTime = status.duration - 20 * 60 * status.tries;
+          const actualSolveTime =
+            status.duration - 20 * 60 * Math.max(status.tries - 1, 0);
           if (actualSolveTime > lastSolvedTime) {
             lastSolvedTime = actualSolveTime;
           }
@@ -1288,7 +1824,7 @@ class XcpcioParser {
   }
 
   private calculate(): void {
-    const firstBlood = this.problemIdList.map(() => 0);
+    const firstBlood = this.problemIdList.map((): number | null => null);
 
     for (const run of this.runs) {
       const rawProblemId = run.problem_id;
@@ -1328,7 +1864,7 @@ class XcpcioParser {
 
       const tt = XcpcioParser.timeUnit === 's' ? run.timestamp * 1000 : run.timestamp;
       if (result === SR_ACCEPTED) {
-        if (firstBlood[problemIdx] === 0 || firstBlood[problemIdx] === tt) {
+        if (firstBlood[problemIdx] === null || firstBlood[problemIdx] === tt) {
           result = SR_FIRST_BLOOD;
           firstBlood[problemIdx] = tt;
         }
@@ -1367,7 +1903,13 @@ class XcpcioParser {
   }
 }
 
-async function loadAndBuildRank(contestPath: string, options: Required<Pick<XcpcioGenerateOptions, 'downloadBanner'>> & { resolvedOutputPath?: string }): Promise<XcpcioBuildResult> {
+async function loadAndBuildRank(
+  contestPath: string,
+  options: Required<Pick<XcpcioGenerateOptions, 'downloadBanner'>> & {
+    resolvedOutputPath?: string;
+    assetBaseDir?: string;
+  },
+): Promise<XcpcioBuildResult> {
   const warnings: string[] = [];
   const contestUrlValue = `${XCPCIO_BASE_URL}${contestPath}`;
   let contestName: string | null = null;
@@ -1391,15 +1933,17 @@ async function loadAndBuildRank(contestPath: string, options: Required<Pick<Xcpc
     warnings.push(`${contestPath} 获取 organizations.json 失败，将不写入 organization_id 映射`);
   }
 
-  if (options.downloadBanner) {
-    const banner = config.banner ?? null;
-    if (banner !== null && options.resolvedOutputPath) {
-      const contestId = path.basename(options.resolvedOutputPath).replace('.srk.json', '');
-      const bannerPath = await downloadBanner(banner, contestId);
-      if (bannerPath === null) {
-        warnings.push(`${contestPath} 下载 banner 失败`);
-      }
-    }
+  if (options.resolvedOutputPath && options.assetBaseDir) {
+    const contestId = path.basename(options.resolvedOutputPath).replace(/\.srk\.json$/, '');
+    await prepareAssets(
+      contestPath,
+      config,
+      teams,
+      contestId,
+      options.assetBaseDir,
+      options.downloadBanner,
+      warnings,
+    );
   }
 
   setContestUrl(contestPath, config);
@@ -1408,10 +1952,9 @@ async function loadAndBuildRank(contestPath: string, options: Required<Pick<Xcpc
     throw new XcpcioBuildError(`${contestPath} 获取提交记录为空`, warnings, contestName);
   }
 
-  XcpcioParser.timeUnit = 'ms';
-  if (runs[0].timestamp / 1000 < 1) {
-    warnings.push(`获取 runs 失败, ${runs[0].timestamp}，按秒级时间戳处理`);
-    XcpcioParser.timeUnit = 's';
+  XcpcioParser.timeUnit = inferRunTimeUnit(config, runs);
+  if (XcpcioParser.timeUnit === 's') {
+    warnings.push(`检测到 run.timestamp 为秒级时间戳，按秒级处理`);
   }
 
   let srkObject: AnyObject;
@@ -1423,6 +1966,7 @@ async function loadAndBuildRank(contestPath: string, options: Required<Pick<Xcpc
     const series = parser.series(markers);
     const rows = parser.rows(markers);
     const useAccumulateInSeconds = parser.options();
+    const onlineContest = isOnlineContest(contestPath, config);
     srkObject = buildRank(
       contest,
       problems,
@@ -1431,8 +1975,11 @@ async function loadAndBuildRank(contestPath: string, options: Required<Pick<Xcpc
       markers,
       ['XCPCIO (https://xcpcio.com)', 'algoUX (https://algoux.org)'],
       useAccumulateInSeconds ? 's' : 'min',
-      series.remarks,
+      series.remarks && !onlineContest,
     );
+    if (onlineContest) {
+      normalizeOnlineFirstBlood(srkObject);
+    }
   } catch (e) {
     if (e instanceof XcpcioBuildError) throw e;
     throw new XcpcioBuildError((e as Error).message, warnings, contestName);
@@ -1472,6 +2019,7 @@ export async function generateRank(
     const built = await loadAndBuildRank(normalizedContestPath, {
       downloadBanner: options.downloadBanner ?? true,
       resolvedOutputPath,
+      assetBaseDir: path.resolve(options.cwd ?? process.cwd(), 'assets'),
     });
     contestName = built.contestName;
     warnings.push(...built.warnings);

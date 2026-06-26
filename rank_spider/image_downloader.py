@@ -1,7 +1,120 @@
+import base64
 import os
+import re
 import requests
-from typing import Optional, Dict
-from urllib.parse import urlparse
+from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urljoin, urlparse
+
+
+IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'}
+MIME_EXTENSIONS = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'image/svg+xml': 'svg',
+    'image/bmp': 'bmp',
+    'image/x-icon': 'ico',
+    'image/vnd.microsoft.icon': 'ico',
+}
+
+
+def normalize_path(path: str) -> str:
+    return path.replace(os.sep, '/')
+
+
+def safe_filename_component(value: Any, fallback: str = 'image') -> str:
+    text = str(value or fallback).strip()
+    text = re.sub(r'[^A-Za-z0-9._-]+', '-', text)
+    text = text.strip('.-_')
+    return text or fallback
+
+
+def resolve_image_url(url: str, base_url: str = 'https://board.xcpcio.com/data/') -> str:
+    if url.startswith('http://') or url.startswith('https://'):
+        return url
+    return urljoin(base_url, url)
+
+
+def parse_base64_image(image_data: Any) -> Optional[Tuple[str, str]]:
+    if isinstance(image_data, str):
+        match = re.match(r'^data:([^;,]+)?;base64,(.*)$', image_data, re.DOTALL)
+        if not match:
+            return None
+        return match.group(1) or 'image/png', match.group(2)
+
+    if not isinstance(image_data, dict):
+        return None
+
+    base64_value = image_data.get('base64')
+    if not isinstance(base64_value, str) or not base64_value:
+        return None
+    if base64_value.startswith('data:'):
+        return parse_base64_image(base64_value)
+
+    mime = image_data.get('mime')
+    if not mime:
+        image_type = image_data.get('type', 'png')
+        mime = f'image/{image_type}'
+    return str(mime), base64_value
+
+
+def write_base64_image(image_data: Any, save_path: str) -> Optional[str]:
+    parsed = parse_base64_image(image_data)
+    if parsed is None:
+        return None
+
+    _, base64_value = parsed
+    try:
+        save_dir = os.path.dirname(save_path)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+        with open(save_path, 'wb') as file:
+            file.write(base64.b64decode(base64_value, validate=False))
+        print(f'图片已保存到: {save_path}')
+        return save_path
+    except Exception as e:
+        print(f'保存 base64 图片失败: {save_path}, 错误: {str(e)}')
+        return None
+
+
+def get_image_url(image_data: Any) -> Optional[str]:
+    if isinstance(image_data, str):
+        if image_data.startswith('data:'):
+            return None
+        return image_data
+    if isinstance(image_data, dict):
+        url = image_data.get('url')
+        if isinstance(url, str) and url:
+            return url
+    return None
+
+
+def get_srk_image_without_download(
+    image_data: Any,
+    base_url: str = 'https://board.xcpcio.com/data/',
+) -> Optional[str]:
+    if isinstance(image_data, str):
+        if image_data.startswith('data:'):
+            return None
+        return resolve_image_url(image_data, base_url)
+
+    url = get_image_url(image_data)
+    if url:
+        return resolve_image_url(url, base_url)
+    return None
+
+
+def image_link(
+    image_data: Any,
+    base_url: str = 'https://board.xcpcio.com/data/',
+) -> Optional[str]:
+    url = get_image_url(image_data)
+    if url:
+        return resolve_image_url(url, base_url)
+    return None
+
 
 def download_image(
     url: str,
@@ -27,10 +140,7 @@ def download_image(
         return None
     
     # 构建完整 URL
-    if url.startswith('http://') or url.startswith('https://'):
-        image_url = url
-    else:
-        image_url = f'{base_url}{url}'
+    image_url = resolve_image_url(url, base_url)
     
     # 使用默认请求头（如果未提供）
     if headers is None:
@@ -90,37 +200,73 @@ def extract_extension(url: str, default_ext: str = 'png') -> str:
     if '.' in filename:
         ext = filename.split('.')[-1]
         # 确保扩展名是常见的图片格式
-        if ext.lower() in ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']:
-            return ext
+        if ext.lower() in IMAGE_EXTENSIONS:
+            return ext.lower()
     
     return default_ext
 
 
-def download_banner(banner_data: dict, contest_id: str, base_dir: str = 'images') -> Optional[str]:
+def extract_image_extension(image_data: Any, default_ext: str = 'png') -> str:
+    url = get_image_url(image_data)
+    if url:
+        ext = extract_extension(url, '')
+        if ext:
+            return ext
+
+    if isinstance(image_data, dict):
+        mime = image_data.get('mime')
+        if mime in MIME_EXTENSIONS:
+            return MIME_EXTENSIONS[mime]
+        image_type = image_data.get('type')
+        if isinstance(image_type, str) and image_type.lower() in IMAGE_EXTENSIONS:
+            return image_type.lower()
+
+    return default_ext
+
+
+def download_asset(
+    image_data: Any,
+    contest_id: str,
+    filename_stem: str,
+    base_dir: str = 'assets',
+    base_url: str = 'https://board.xcpcio.com/data/',
+    default_ext: str = 'png',
+) -> Tuple[Optional[str], bool]:
+    """
+    Convert an XCPCIO Image object to a standard-ranklist Image value.
+
+    URL images are downloaded and base64 images are decoded to
+    ./assets/{contest_id}/..., returning the relative SRK path.
+    """
+    ext = extract_image_extension(image_data, default_ext)
+    filename = f'{safe_filename_component(filename_stem)}.{ext}'
+    save_path = normalize_path(os.path.join(base_dir, safe_filename_component(contest_id), filename))
+
+    if parse_base64_image(image_data):
+        local_path = write_base64_image(image_data, save_path)
+        return (normalize_path(local_path), True) if local_path is not None else (None, False)
+
+    url = get_image_url(image_data)
+    if not url:
+        return None, False
+
+    local_path = download_image(url, save_path, base_url=base_url)
+    if local_path is None:
+        return get_srk_image_without_download(image_data, base_url), False
+    return normalize_path(local_path), True
+
+
+def download_banner(banner_data: dict, contest_id: str, base_dir: str = 'assets') -> Optional[str]:
     """
     下载 banner 图片
     
     Args:
-        banner_data: banner 数据对象，包含 url 字段
+        banner_data: banner 数据对象，支持 url 或 base64 字段
         contest_id: 比赛 ID，如 ccpc7thfinal
         base_dir: 图片保存的基础目录
     
     Returns:
         保存的本地图片路径，如果下载失败则返回 None
     """
-    if not banner_data or not isinstance(banner_data, dict):
-        return None
-    
-    # 获取 URL
-    url = banner_data.get('url')
-    if not url:
-        return None
-    
-    # 提取扩展名
-    ext = extract_extension(url)
-    
-    # 构建保存路径
-    save_path = f'{base_dir}/{contest_id}/assets/banner.{ext}'
-    
-    # 下载图片
-    return download_image(url, save_path)
+    asset_path, _ = download_asset(banner_data, contest_id, 'banner', base_dir=base_dir)
+    return asset_path
