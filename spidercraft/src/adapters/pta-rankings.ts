@@ -232,6 +232,8 @@ function convertPTASolutionResult(result: string): srk.SolutionResultFull {
     case 'INTERNAL_ERROR':
     case 'CHECKER_ERROR':
     case 'INTERACTOR_ERROR':
+      console.log(`Possible system error solution result: ${result}`);
+      return 'UKE';
     default:
       console.log(`Unknown solution result: ${result}`);
       return 'UKE';
