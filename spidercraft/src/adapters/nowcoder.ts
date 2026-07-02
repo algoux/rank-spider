@@ -218,7 +218,7 @@ async function fetchAllRankData(cid: string): Promise<{
   rows: NowcoderRankRow[];
   basicInfo: NowcoderBasicInfo;
 }> {
-  const firstUrl = `${BASE_URL}/acm-heavy/acm/contest/real-time-rank-data?token=&id=${cid}&limit=0&_=${Date.now()}`;
+  const firstUrl = `${BASE_URL}/acm-heavy/acm/contest/real-time-rank-data?token=&id=${cid}&onlyContestRank=true&limit=0&_=${Date.now()}`;
   const firstPage = await fetchJsonAPI<NowcoderRankPageData>(
     firstUrl,
     `rank-data cid=${cid} page=1`,
@@ -231,7 +231,7 @@ async function fetchAllRankData(cid: string): Promise<{
   );
   for (let page = 2; page <= totalPages; page++) {
     await sleep(200);
-    const url = `${BASE_URL}/acm-heavy/acm/contest/real-time-rank-data?token=&id=${cid}&limit=0&page=${page}&_=${Date.now()}`;
+    const url = `${BASE_URL}/acm-heavy/acm/contest/real-time-rank-data?token=&id=${cid}&onlyContestRank=true&limit=0&page=${page}&_=${Date.now()}`;
     const data = await fetchJsonAPI<NowcoderRankPageData>(
       url,
       `rank-data cid=${cid} page=${page}`,
