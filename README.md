@@ -32,7 +32,7 @@ python -m rank_spider.tools.xcpc_mcp_server
 
 - `contest_path`：XCPCIO 榜单路径，例如 `/provincial-contest/2026/sichuan`
 - `output_path`：输出 SRK JSON 路径，相对于当前工作目录解析，例如 `temp/sichuan.srk.json`
-- `download_banner`：是否下载 banner 资源到 `images/`，默认 `true`
+- `download_banner`：是否下载图片资源到 `assets/`，默认 `true`
 
 返回：
 

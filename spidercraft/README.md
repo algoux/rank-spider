@@ -58,10 +58,10 @@ npm run xcpcio -- https://board.xcpcio.com/ccpc/12th/guizhou-invitational
 ccpc/ccpc12thguizhou-invitational.srk.json
 ```
 
-默认会按 Python 版 `rank_spider/xcpc.py` 的单次爬虫逻辑下载 banner 资源；如只想生成 SRK JSON，可以加上：
+默认会按 Python 版 `rank_spider/xcpc.py` 的单次爬虫逻辑下载图片资源；如只想生成 SRK JSON，可以加上：
 
 ```bash
 npm run xcpcio -- https://board.xcpcio.com/ccpc/12th/guizhou-invitational -o out.srk.json --no-download-banner
 ```
 
-banner 保存位置同 Python 版单次逻辑：`images/<输出文件名去掉 .srk.json>/assets/banner.<ext>`。
+图片资源保存位置同 Python 版单次逻辑：`assets/<输出文件名去掉 .srk.json>/*.<ext>`。

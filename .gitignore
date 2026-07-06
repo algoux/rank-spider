@@ -15,6 +15,7 @@ rank_spider/icpc/*
 rank_spider/ccpc/*
 rank_spider/province/*
 rank_spider/images/*
+rank_spider/assets/*
 debug/
 rank_spider/__pycache__/
 rank_spider/temp/
@@ -23,3 +24,5 @@ spidercraft/ccpc/*
 spidercraft/icpc/*
 spidercraft/temp/*
 spidercraft/images/*
+spidercraft/assets/*
+assets/*
