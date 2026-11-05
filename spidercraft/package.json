@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "xcpcio": "tsx src/programs/xcpcio.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "tsx tests/xcpcio-organization-assets.ts && tsx tests/xcpcio-problem-colors.ts"
   },
   "keywords": [],
   "author": "bLue",

@@ -516,7 +516,7 @@ function makeContest(config: AnyObject): AnyObject {
   }
 
   const contest: AnyObject = {
-    title: {
+    title: config.contest_title ?? {
       'zh-CN': config.contest_name,
       fallback: config.contest_name,
     },
@@ -533,7 +533,11 @@ function makeContest(config: AnyObject): AnyObject {
   return contest;
 }
 
-function makeProblem(alias: any, statistics?: [number, number], style?: [string?]): AnyObject {
+function makeProblem(
+  alias: any,
+  statistics?: [number, number],
+  style?: [backgroundColor?: string, textColor?: string],
+): AnyObject {
   const problem: AnyObject = {
     alias,
   };
@@ -544,9 +548,10 @@ function makeProblem(alias: any, statistics?: [number, number], style?: [string?
     };
   }
   if (style !== undefined && style !== null) {
-    problem.style = {
-      backgroundColor: style[0],
-    };
+    const problemStyle: AnyObject = {};
+    if (style[0] !== undefined) problemStyle.backgroundColor = style[0];
+    if (style[1] !== undefined) problemStyle.textColor = style[1];
+    if (Object.keys(problemStyle).length > 0) problem.style = problemStyle;
   }
   return problem;
 }
@@ -815,33 +820,72 @@ function resolveImageUrl(url: string, baseUrl = `${XCPCIO_DATA_BASE_URL}/`): str
   return new URL(url, baseUrl).href;
 }
 
-function getImageUrl(imageData: any): string | null {
+function selectImageData(imageData: any): any | null {
   if (typeof imageData === 'string') {
-    return imageData.startsWith('data:') ? null : imageData;
+    return imageData ? imageData : null;
   }
-  if (imageData !== null && typeof imageData === 'object' && !Array.isArray(imageData)) {
-    return typeof imageData.url === 'string' && imageData.url ? imageData.url : null;
+  if (Array.isArray(imageData)) {
+    for (const item of imageData) {
+      const selected = selectImageData(item);
+      if (selected !== null) return selected;
+    }
+    return null;
+  }
+  if (imageData === null || typeof imageData !== 'object') {
+    return null;
+  }
+
+  if (typeof imageData.base64 === 'string' && imageData.base64) {
+    return imageData;
+  }
+  for (const key of ['url', 'href', 'src']) {
+    if (typeof imageData[key] === 'string' && imageData[key]) {
+      return imageData;
+    }
+  }
+  return null;
+}
+
+function getImageUrl(imageData: any): string | null {
+  const selected = selectImageData(imageData);
+  if (typeof selected === 'string') {
+    return selected.startsWith('data:') ? null : selected;
+  }
+  if (selected !== null && typeof selected === 'object' && !Array.isArray(selected)) {
+    for (const key of ['url', 'href', 'src']) {
+      const value = selected[key];
+      if (typeof value === 'string' && value && !value.startsWith('data:')) {
+        return value;
+      }
+    }
   }
   return null;
 }
 
 function parseBase64Image(imageData: any): { mime: string; base64: string } | null {
-  if (typeof imageData === 'string') {
-    const match = imageData.match(/^data:([^;,]+)?;base64,([\s\S]*)$/);
+  const selected = selectImageData(imageData);
+  if (typeof selected === 'string') {
+    const match = selected.match(/^data:([^;,]+)?;base64,([\s\S]*)$/);
     if (!match) return null;
     return { mime: match[1] || 'image/png', base64: match[2] };
   }
-  if (imageData === null || typeof imageData !== 'object' || Array.isArray(imageData)) {
+  if (selected === null || typeof selected !== 'object' || Array.isArray(selected)) {
     return null;
   }
-  if (typeof imageData.base64 !== 'string' || !imageData.base64) {
+  for (const key of ['url', 'href', 'src']) {
+    const value = selected[key];
+    if (typeof value === 'string' && value.startsWith('data:')) {
+      return parseBase64Image(value);
+    }
+  }
+  if (typeof selected.base64 !== 'string' || !selected.base64) {
     return null;
   }
-  if (imageData.base64.startsWith('data:')) {
-    return parseBase64Image(imageData.base64);
+  if (selected.base64.startsWith('data:')) {
+    return parseBase64Image(selected.base64);
   }
-  const mime = imageData.mime ?? `image/${imageData.type ?? 'png'}`;
-  return { mime, base64: imageData.base64 };
+  const mime = selected.mime ?? `image/${selected.type ?? 'png'}`;
+  return { mime, base64: selected.base64 };
 }
 
 function extractImageExtension(imageData: any, defaultExt = 'png'): string {
@@ -855,12 +899,13 @@ function extractImageExtension(imageData: any, defaultExt = 'png'): string {
   if (base64Image && MIME_EXTENSIONS[base64Image.mime]) {
     return MIME_EXTENSIONS[base64Image.mime];
   }
-  if (imageData !== null && typeof imageData === 'object' && !Array.isArray(imageData)) {
-    if (MIME_EXTENSIONS[imageData.mime]) {
-      return MIME_EXTENSIONS[imageData.mime];
+  const selected = selectImageData(imageData);
+  if (selected !== null && typeof selected === 'object' && !Array.isArray(selected)) {
+    if (MIME_EXTENSIONS[selected.mime]) {
+      return MIME_EXTENSIONS[selected.mime];
     }
-    if (typeof imageData.type === 'string' && IMAGE_EXTENSIONS.has(imageData.type.toLowerCase())) {
-      return imageData.type.toLowerCase();
+    if (typeof selected.type === 'string' && IMAGE_EXTENSIONS.has(selected.type.toLowerCase())) {
+      return selected.type.toLowerCase();
     }
   }
   return defaultExt;
@@ -1026,10 +1071,93 @@ function teamItems(teams: AnyObject | AnyObject[]): Array<[any, AnyObject]> {
   return Object.entries(teams);
 }
 
+function organizationItems(
+  organizations: AnyObject | AnyObject[] | null | undefined,
+): Array<[any, AnyObject]> {
+  if (Array.isArray(organizations)) {
+    return organizations.map(
+      (organization, index): [any, AnyObject] => [organization?.id ?? String(index), organization],
+    );
+  }
+  if (organizations !== null && typeof organizations === 'object') {
+    return Object.entries(organizations);
+  }
+  return [];
+}
+
+function organizationImageSource(organization: AnyObject): any | null {
+  for (const key of [
+    'logo',
+    'avatar',
+    'badge',
+    'image',
+    'icon',
+    'logo_url',
+    'logoUrl',
+    'image_url',
+    'imageUrl',
+  ]) {
+    const source = organization[key];
+    if (selectImageData(source) !== null) {
+      return source;
+    }
+  }
+  return null;
+}
+
+function teamOrganizationId(team: AnyObject): any | null {
+  const organization = team.organization;
+  return (
+    team.organization_id ??
+    team.organizationId ??
+    (organization !== null && typeof organization === 'object' && !Array.isArray(organization)
+      ? organization.id ?? null
+      : null)
+  );
+}
+
+async function prepareOrganizationAvatars(
+  contestPath: string,
+  organizations: AnyObject | AnyObject[] | null | undefined,
+  contestId: string,
+  assetBaseDir: string,
+  downloadAssets: boolean,
+  warnings: string[],
+): Promise<Map<string, string>> {
+  const avatars = new Map<string, string>();
+
+  for (const [organizationKey, organization] of organizationItems(organizations)) {
+    if (organization === null || typeof organization !== 'object' || Array.isArray(organization)) {
+      continue;
+    }
+
+    const organizationId = organization.id ?? organizationKey;
+    const imageSource = organizationImageSource(organization);
+    if (imageSource === null) continue;
+
+    const avatar = await prepareImageAsset(
+      imageSource,
+      contestId,
+      `organization-${safeFilenameComponent(organizationId, 'organization')}-logo`,
+      assetBaseDir,
+      warnings,
+      `${contestPath} organization ${organizationId} logo`,
+      downloadAssets,
+      'png',
+    );
+    if (avatar) {
+      avatars.set(String(organizationId), avatar);
+    }
+  }
+
+  return avatars;
+}
+
 async function prepareAssets(
   contestPath: string,
   config: AnyObject,
   teams: AnyObject | AnyObject[],
+  organizations: AnyObject | AnyObject[] | null | undefined,
   contestId: string,
   assetBaseDir: string,
   downloadAssets: boolean,
@@ -1056,6 +1184,14 @@ async function prepareAssets(
     }
   }
 
+  const organizationAvatars = await prepareOrganizationAvatars(
+    contestPath,
+    organizations,
+    contestId,
+    assetBaseDir,
+    downloadAssets,
+    warnings,
+  );
   const teamPhotoTemplate = config.options?.team_photo_url_template ?? null;
   for (const [teamKey, team] of teamItems(teams)) {
     if (team === null || typeof team !== 'object' || Array.isArray(team)) {
@@ -1065,7 +1201,9 @@ async function prepareAssets(
     const teamId = team.team_id ?? team.id ?? teamKey;
     const filenameId = safeFilenameComponent(teamId, 'team');
 
-    const avatarSource = team.avatar ?? team.badge ?? null;
+    const avatarSource = [team.avatar, team.badge].find(
+      (source) => selectImageData(source) !== null,
+    ) ?? null;
     if (avatarSource !== null) {
       const avatar = await prepareImageAsset(
         avatarSource,
@@ -1079,6 +1217,13 @@ async function prepareAssets(
       );
       if (avatar) {
         team.avatar = avatar;
+      }
+    } else {
+      const organizationId = teamOrganizationId(team);
+      const organizationAvatar =
+        organizationId === null ? null : organizationAvatars.get(String(organizationId)) ?? null;
+      if (organizationAvatar) {
+        team.avatar = organizationAvatar;
       }
     }
 
@@ -1391,6 +1536,58 @@ class XcpcioParser {
     });
   }
 
+  private problemBalloonColor(
+    index: number,
+  ): { backgroundColor?: string; textColor?: string; source: 'problem' | 'legacy' } | null {
+    const problem = Array.isArray(this.config.problems) ? this.config.problems[index] : null;
+    const candidates: Array<{ value: any; source: 'problem' | 'legacy' }> = [
+      {
+        value:
+          problem !== null && typeof problem === 'object' && !Array.isArray(problem)
+            ? problem.balloon_color ?? problem.balloonColor
+            : null,
+        source: 'problem',
+      },
+      {
+        value: Array.isArray(this.config.balloon_color)
+          ? this.config.balloon_color[index]
+          : null,
+        source: 'legacy',
+      },
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate.value === 'string' && candidate.value) {
+        return { backgroundColor: candidate.value, source: candidate.source };
+      }
+      if (
+        candidate.value === null ||
+        typeof candidate.value !== 'object' ||
+        Array.isArray(candidate.value)
+      ) {
+        continue;
+      }
+
+      const backgroundColor =
+        candidate.value.background_color ?? candidate.value.backgroundColor;
+      const textColor =
+        candidate.value.color ?? candidate.value.text_color ?? candidate.value.textColor;
+      if (
+        (typeof backgroundColor === 'string' && backgroundColor) ||
+        (typeof textColor === 'string' && textColor)
+      ) {
+        return {
+          backgroundColor:
+            typeof backgroundColor === 'string' && backgroundColor ? backgroundColor : undefined,
+          textColor: typeof textColor === 'string' && textColor ? textColor : undefined,
+          source: candidate.source,
+        };
+      }
+    }
+
+    return null;
+  }
+
   contest(): AnyObject {
     return makeContest(this.config);
   }
@@ -1400,14 +1597,11 @@ class XcpcioParser {
     const usesDefaultBalloonColors = this.usesDefaultBalloonColors();
 
     for (let i = 0; i < this.problemIdList.length; i++) {
-      let style: [string?] | undefined;
-      if (this.config.balloon_color !== null && this.config.balloon_color !== undefined) {
-        const color = this.config.balloon_color[i];
-        style = [color.background_color];
-      }
-      if (usesDefaultBalloonColors) {
-        style = undefined;
-      }
+      const color = this.problemBalloonColor(i);
+      const style: [backgroundColor?: string, textColor?: string] | undefined =
+        color !== null && !(usesDefaultBalloonColors && color.source === 'legacy')
+          ? [color.backgroundColor, color.textColor]
+          : undefined;
       problems.push(makeProblem(this.problemIdList[i], this.statistics[i], style));
     }
     return problems;
@@ -1922,6 +2116,14 @@ async function loadAndBuildRank(
   if (config === undefined) {
     throw new XcpcioBuildError(`${contestPath} 获取 config.json 失败`, warnings, contestName);
   }
+  const rawContestName = config.contest_name;
+  if (rawContestName !== null && typeof rawContestName === 'object' && !Array.isArray(rawContestName)) {
+    const texts: AnyObject = rawContestName.texts ?? {};
+    const fallback =
+      texts[rawContestName.fallback_lang ?? 'zh-CN'] ?? Object.values(texts)[0] ?? rawContestName.fallback ?? '';
+    config.contest_title = { ...texts, fallback };
+    config.contest_name = texts['zh-CN'] ?? fallback;
+  }
   contestName = config.contest_name ?? null;
   if (teams === undefined) {
     throw new XcpcioBuildError(`${contestPath} 获取 team.json 失败`, warnings, contestName);
@@ -1939,6 +2141,7 @@ async function loadAndBuildRank(
       contestPath,
       config,
       teams,
+      org,
       contestId,
       options.assetBaseDir,
       options.downloadBanner,
