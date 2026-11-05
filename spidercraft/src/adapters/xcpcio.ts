@@ -480,25 +480,24 @@ function makeContest(config: AnyObject): AnyObject {
   startTime = normalizeContestTimestampSeconds(startTime);
   endTime = normalizeContestTimestampSeconds(endTime);
 
-  let frozenHours = 0;
+  // XCPCIO frozen_time is a duration in seconds; also accept epoch ms, ms duration, and legacy hours.
+  let frozenSeconds = 0;
   try {
-    if (frozenTime == null) {
-      frozenHours = 0;
-    } else if (isPythonNumber(frozenTime) && toPythonNumber(frozenTime) > 946684800000) {
-      const frozenTs = Math.floor(toPythonNumber(frozenTime) / 1000);
-      frozenHours = (endTime - frozenTs) / 3600;
-    } else if (isPythonNumber(frozenTime) && toPythonNumber(frozenTime) > 1000) {
-      frozenHours = toPythonNumber(frozenTime) / 1000.0 / 3600.0;
+    const value = frozenTime == null ? 0 : toPythonNumber(frozenTime);
+    if (!Number.isFinite(value) || value <= 0) {
+      frozenSeconds = 0;
+    } else if (value > 946684800000) {
+      frozenSeconds = endTime - Math.floor(value / 1000);
+    } else if (value > 86400) {
+      frozenSeconds = value / 1000;
+    } else if (value <= 24) {
+      frozenSeconds = value * 3600;
     } else {
-      if (isPythonNumber(frozenTime) && toPythonNumber(frozenTime) > 3600) {
-        frozenHours = toPythonNumber(frozenTime) / 3600.0;
-      } else {
-        frozenHours = toPythonNumber(frozenTime);
-      }
+      frozenSeconds = value;
     }
-    if (!Number.isFinite(frozenHours)) frozenHours = 0;
+    if (!Number.isFinite(frozenSeconds) || frozenSeconds < 0) frozenSeconds = 0;
   } catch {
-    frozenHours = 0;
+    frozenSeconds = 0;
   }
 
   const duration = (endTime - startTime) / 3600;
@@ -522,7 +521,7 @@ function makeContest(config: AnyObject): AnyObject {
     },
     startAt: formatTimestampPlus8(startTime),
     duration: [Math.trunc(duration), 'h'],
-    frozenDuration: [Math.trunc(frozenHours), 'h'],
+    frozenDuration: [Math.round(frozenSeconds), 's'],
   };
   if (link !== null && link !== undefined) {
     contest.link = link;
